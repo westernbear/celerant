@@ -1,0 +1,17 @@
+{
+	"schemaVersion": 1,
+	"id": "celerant-gametest",
+	"version": "1.0.0",
+	"name": "Celerant Client Game Tests",
+	"environment": "client",
+	"entrypoints": {
+		"fabric-client-gametest": [
+			"io.github.westernbear.celerant.client.CelerantClientGameTest"
+		]
+	},
+	"depends": {
+		"celerant": "*",
+		"fabric-client-gametest-api-v1": "*",
+		"iris": "1.11.2+mc26.2"
+	}
+}

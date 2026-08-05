@@ -1,0 +1,97 @@
+{
+  "build.gradle": {
+    "mtime": 1785912293.1666176,
+    "ast_hash": "64e3b1bf07ba6a81b09ddfdc417e935e",
+    "semantic_hash": ""
+  },
+  "gradlew": {
+    "mtime": 1785907447.8951073,
+    "ast_hash": "45bf2667b1fbec0e07e42808dc662b6b",
+    "semantic_hash": ""
+  },
+  "settings.gradle": {
+    "mtime": 1785907447.8771064,
+    "ast_hash": "daa786a2662ff0954e3b0d8c6c4d4641",
+    "semantic_hash": ""
+  },
+  "src/client/java/io/github/westernbear/celerant/client/CelerantClient.java": {
+    "mtime": 1785913088.556601,
+    "ast_hash": "403c7d7a6a07068771454fdcfbabb0f8",
+    "semantic_hash": ""
+  },
+  "src/client/java/io/github/westernbear/celerant/client/iris/IrisToonPatcher.java": {
+    "mtime": 1785911306.157143,
+    "ast_hash": "64a88d792ff702db0df634334f7eec59",
+    "semantic_hash": ""
+  },
+  "src/client/java/io/github/westernbear/celerant/client/mixin/IrisTransformPatcherMixin.java": {
+    "mtime": 1785909620.5121722,
+    "ast_hash": "754e462bab30906adc6350a01e37824b",
+    "semantic_hash": ""
+  },
+  "src/client/resources/celerant.client.mixins.json": {
+    "mtime": 1785908851.3262553,
+    "ast_hash": "c43db06889b5ba13d0c0bf00f0bdc59d",
+    "semantic_hash": ""
+  },
+  "src/main/java/io/github/westernbear/celerant/Celerant.java": {
+    "mtime": 1785909185.049352,
+    "ast_hash": "5fa6927c696bced1f5880dd1ddf5e79c",
+    "semantic_hash": ""
+  },
+  "src/main/resources/fabric.mod.json": {
+    "mtime": 1785910541.1859894,
+    "ast_hash": "f4f70e4ccc8b28b3f883b1b6297d0191",
+    "semantic_hash": ""
+  },
+  ".github/workflows/build.yml": {
+    "mtime": 1785913600.0810838,
+    "ast_hash": "2a75829f6956a00f5827b128b908be82",
+    "semantic_hash": ""
+  },
+  "AGENTS.md": {
+    "mtime": 1785907463.4018538,
+    "ast_hash": "6a47d64fcc136324ca395065a707ef76",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1785913629.2033706,
+    "ast_hash": "bbc935bb29f81d56acd830b9cf1e1254",
+    "semantic_hash": ""
+  },
+  "src/main/resources/assets/celerant/icon.png": {
+    "mtime": 1785907447.8541052,
+    "ast_hash": "f888f5ec61d426bf25475a0d00d88e01",
+    "semantic_hash": ""
+  },
+  "src/client/java/io/github/westernbear/celerant/client/VrmClientCommands.java": {
+    "mtime": 1785909658.06739,
+    "ast_hash": "9d3add070edcecdd3b1ddbaeff203617",
+    "semantic_hash": ""
+  },
+  "src/client/java/io/github/westernbear/celerant/client/VrmRuntime.java": {
+    "mtime": 1785911348.182234,
+    "ast_hash": "d15ed7e36ef8e2edcba82a288a28105d",
+    "semantic_hash": ""
+  },
+  "src/gametest/java/io/github/westernbear/celerant/client/CelerantClientGameTest.java": {
+    "mtime": 1785912820.3438225,
+    "ast_hash": "98008d3d97c49adf93c8c727966087e6",
+    "semantic_hash": ""
+  },
+  "src/gametest/resources/fabric.mod.json": {
+    "mtime": 1785912293.170618,
+    "ast_hash": "cb7928a1d4a2e0aa994b94bf2359baaf",
+    "semantic_hash": ""
+  },
+  "scripts/release.sh": {
+    "mtime": 1785913629.2023704,
+    "ast_hash": "0e675dccd3d70e638f6bdef20b26ba39",
+    "semantic_hash": ""
+  },
+  ".github/workflows/release.yml": {
+    "mtime": 1785913629.2013702,
+    "ast_hash": "f649044c4880e9b76480810b477a7e9c",
+    "semantic_hash": ""
+  }
+}

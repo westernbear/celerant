@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Verify release version
+        id: version
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          grep -qxF "mod_version=$version" gradle.properties
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build and run client game test
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew clean build runClientGameTest --no-daemon --stacktrace
+
+      - name: Create checksum
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        working-directory: build/libs
+        run: sha256sum "celerant-$VERSION.jar" > SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          args=(
+            "$GITHUB_REF_NAME"
+            "build/libs/celerant-$VERSION.jar"
+            "build/libs/SHA256SUMS.txt"
+            --verify-tag
+            --generate-notes
+            --title "Celerant $VERSION"
+          )
+          [[ "$VERSION" == *-* ]] && args+=(--prerelease)
+          gh release create "${args[@]}"
