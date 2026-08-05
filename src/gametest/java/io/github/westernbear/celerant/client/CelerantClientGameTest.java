@@ -7,6 +7,7 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -35,6 +36,7 @@ import org.lwjgl.glfw.GLFW;
 
 public final class CelerantClientGameTest implements FabricClientGameTest {
 	private static final String PACK_NAME = "CelerantTest";
+	private static final String LOCAL_VISUAL_VRM = "_local_visual.vrm";
 	private static final String VERTEX_SHADER = """
 		#version 120
 		varying vec2 texcoord;
@@ -73,22 +75,36 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		Path modelPath = gameDirectory.resolve("celerant/models/minimal.vrm");
 
 		writeFixtures(packRoot, modelPath);
+		boolean localVisualTest = prepareLocalVisualModel(gameDirectory);
 		enableShaderPack(context, packRoot);
 		verifyIrisMixinPath();
 
 		try (TestSingleplayerContext world = context.worldBuilder().setUseConsistentSettings(true).create()) {
 			TestServerConnection connection = world.getConnection();
 			connection.waitForChunksRender(true, 1200);
+			world.getServer().runCommand("weather clear");
+			world.getServer().runCommand("time set 6000");
+			connection.waitForClientboundPackets();
 			context.waitFor(client -> Iris.isPackInUseQuick()
 				&& Iris.getPipelineManager().getPipeline().isPresent()
 				&& Iris.getStoredError().isEmpty(), 1200);
 
 			testFailureFlow(context);
 			testUserFlow(context, world, connection);
+			if (localVisualTest) {
+				testLocalVisualFlow(context, world, connection);
+			}
 		}
 
 		context.waitFor(client -> "VRM: not loaded".equals(VrmRuntime.getInstance().info()), 200);
 		verifyPackUnchanged(packRoot);
+		if (localVisualTest) {
+			try {
+				Files.deleteIfExists(gameDirectory.resolve("celerant/models").resolve(LOCAL_VISUAL_VRM));
+			} catch (IOException exception) {
+				throw new AssertionError("could not remove the local visual VRM copy", exception);
+			}
+		}
 	}
 
 	private static void testFailureFlow(ClientGameTestContext context) {
@@ -155,6 +171,41 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 			&& VrmRuntime.getInstance().info().contains("VRM: minimal.vrm"), 1200);
 	}
 
+	private static void testLocalVisualFlow(ClientGameTestContext context, TestSingleplayerContext world,
+		TestServerConnection connection) {
+		sendCommand(context, "celerant vrm unload", "VRM unloaded");
+		sendCommand(context, "celerant vrm load " + LOCAL_VISUAL_VRM, "Loading VRM asynchronously");
+		context.waitFor(client -> !VrmRuntime.getInstance().isLoading()
+			&& VrmRuntime.getInstance().info().contains("VRM: " + LOCAL_VISUAL_VRM), 2400);
+
+		double y = context.computeOnClient(client -> client.player.getY());
+		teleport(context, world, connection, 0.0, y, 0.0);
+		sendCommand(context, "celerant vrm here", "VRM position set to your current position");
+		sendCommand(context, "celerant vrm scale 1.5", "VRM scale set to 1.5");
+		teleport(context, world, connection, 0.0, y, 4.0);
+		context.getInput().lookAt(BlockPos.containing(0.0, y + 1.25, 0.0));
+
+		String[] names = {"morning", "noon", "sunset", "night"};
+		int[] times = {1000, 6000, 12500, 18000};
+		context.getInput().pressKey(options -> options.keyToggleGui);
+		try {
+			for (int index = 0; index < names.length; index++) {
+				world.getServer().runCommand("time set " + times[index]);
+				connection.waitForClientboundPackets();
+				context.waitTicks(30);
+				Path screenshot = context.takeScreenshot("celerant-local-vrm-" + names[index]);
+				try {
+					require(Files.size(screenshot) > 0, "local VRM screenshot must not be empty");
+				} catch (IOException exception) {
+					throw new AssertionError("could not inspect local VRM screenshot", exception);
+				}
+				System.out.println("[Celerant visual test] " + screenshot);
+			}
+		} finally {
+			context.getInput().pressKey(options -> options.keyToggleGui);
+		}
+	}
+
 	private static void enableShaderPack(ClientGameTestContext context, Path packRoot) {
 		try {
 			context.runOnClient(client -> {
@@ -183,7 +234,7 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		require(vertex != null && vertex.contains("celerant_vrm_toon_marker") && vertex.contains("iris_UV1"),
 			"Iris TransformPatcher mixin must inject the VRM overlay marker");
 		require(fragment != null && fragment.contains("celerant_vrm_ramp")
-			&& fragment.contains("celerant_vrm_toon_normal"),
+			&& fragment.contains("celerant_vrm_toon_normal") && fragment.contains("shadowLightPosition"),
 			"Iris TransformPatcher mixin must inject the normal-based toon pass");
 
 		Map<PatchShaderType, String> multiOutput = TransformPatcher.patchVanilla(
@@ -259,7 +310,7 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		int blue = pixel & 0xFF;
 		int green = pixel >>> 8 & 0xFF;
 		int red = pixel >>> 16 & 0xFF;
-		return red >= 100 && green <= 100 && blue >= 70;
+		return red >= 55 && green <= 60 && blue >= 75;
 	}
 
 	private static void writeFixtures(Path packRoot, Path modelPath) {
@@ -274,6 +325,26 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 			Files.write(modelPath, createMinimalVrm());
 		} catch (IOException exception) {
 			throw new AssertionError("could not prepare client game test fixtures", exception);
+		}
+	}
+
+	private static boolean prepareLocalVisualModel(Path gameDirectory) {
+		String configured = System.getenv("CELERANT_VISUAL_VRM");
+		if (configured == null || configured.isBlank()) {
+			return false;
+		}
+
+		Path source = Path.of(configured).toAbsolutePath().normalize();
+		require(Files.isRegularFile(source), "CELERANT_VISUAL_VRM must point to a regular .vrm file");
+		require(source.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".vrm"),
+			"CELERANT_VISUAL_VRM must point to a .vrm file");
+		try {
+			Path target = gameDirectory.resolve("celerant/models").resolve(LOCAL_VISUAL_VRM);
+			Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+			target.toFile().deleteOnExit();
+			return true;
+		} catch (IOException exception) {
+			throw new AssertionError("could not copy the local visual VRM", exception);
 		}
 	}
 

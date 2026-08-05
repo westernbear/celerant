@@ -42,6 +42,15 @@ xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runClientGameTest --offline
 
 테스트용 VRM과 ShaderPack은 실행 디렉터리에 동적으로 생성되며 배포 JAR에는 포함되지 않습니다.
 
+로컬 VRM의 햇빛 카툰 렌더링은 환경변수로 모델을 지정해 아침(1000), 정오(6000), 해질녘(12500), 밤(18000) 네 시각에서 캡처할 수 있습니다.
+
+```bash
+CELERANT_VISUAL_VRM=/absolute/path/model.vrm \
+xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runClientGameTest --offline
+```
+
+비교 이미지는 `build/run/clientGameTest/screenshots/`에만 남고 모델은 테스트 종료 후 삭제되며, 어느 쪽도 JAR이나 CI artifact에 포함되지 않습니다.
+
 ## CI와 릴리스
 
 main 브랜치와 pull request는 Gradle 빌드 및 실제 Xvfb 클라이언트 게임 테스트를 실행합니다. 새 GitHub Release는 깨끗하고 원격과 동기화된 main 브랜치에서 다음 명령으로 생성합니다.

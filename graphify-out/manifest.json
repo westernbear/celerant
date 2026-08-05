@@ -20,8 +20,8 @@
     "semantic_hash": ""
   },
   "src/client/java/io/github/westernbear/celerant/client/iris/IrisToonPatcher.java": {
-    "mtime": 1785911306.157143,
-    "ast_hash": "64a88d792ff702db0df634334f7eec59",
+    "mtime": 1785915043.8196075,
+    "ast_hash": "6ae69e5616dc13d7a9384fcd2bc76e65",
     "semantic_hash": ""
   },
   "src/client/java/io/github/westernbear/celerant/client/mixin/IrisTransformPatcherMixin.java": {
@@ -55,8 +55,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1785913629.2033706,
-    "ast_hash": "bbc935bb29f81d56acd830b9cf1e1254",
+    "mtime": 1785915147.804443,
+    "ast_hash": "94a6110adcab0268ac0f56c19961eb9e",
     "semantic_hash": ""
   },
   "src/main/resources/assets/celerant/icon.png": {
@@ -75,8 +75,8 @@
     "semantic_hash": ""
   },
   "src/gametest/java/io/github/westernbear/celerant/client/CelerantClientGameTest.java": {
-    "mtime": 1785912820.3438225,
-    "ast_hash": "98008d3d97c49adf93c8c727966087e6",
+    "mtime": 1785915396.4987378,
+    "ast_hash": "d282753d029f07da06e6b71ae65d166a",
     "semantic_hash": ""
   },
   "src/gametest/resources/fabric.mod.json": {

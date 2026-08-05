@@ -27,6 +27,7 @@ public final class IrisToonPatcher {
 	private static final String NORMAL_VARYING = "celerant_vrm_toon_normal";
 	private static final Pattern IRIS_NORMAL = Pattern.compile("\\biris_Normal\\b");
 	private static final Pattern IRIS_NORMAL_MATRIX = Pattern.compile("\\biris_NormalMat\\b");
+	private static final Pattern SHADOW_LIGHT_POSITION = Pattern.compile("\\bshadowLightPosition\\b");
 	private static final Pattern NON_PRIMARY_FRAGMENT_OUTPUT = Pattern.compile("\\biris_FragData[1-9][0-9]*\\b");
 
 	private IrisToonPatcher() {
@@ -118,10 +119,15 @@ public final class IrisToonPatcher {
 	}
 
 	private static String patchFragment(String source, boolean receiveNormal) {
+		boolean declareShadowLight = receiveNormal && !SHADOW_LIGHT_POSITION.matcher(source).find();
 		return transform(source, (parser, unit) -> {
 			unit.parseAndInjectNode(parser, ASTInjectionPoint.BEFORE_DECLARATIONS,
 					"flat in int " + MARKER_VARYING + ";");
 			if (receiveNormal) {
+				if (declareShadowLight) {
+					unit.parseAndInjectNode(parser, ASTInjectionPoint.BEFORE_DECLARATIONS,
+							"uniform vec3 shadowLightPosition;");
+				}
 				unit.parseAndInjectNode(parser, ASTInjectionPoint.BEFORE_DECLARATIONS,
 						"smooth in vec3 " + NORMAL_VARYING + ";");
 				unit.appendMainFunctionBody(parser, normalToonStatement());
@@ -153,10 +159,13 @@ public final class IrisToonPatcher {
 				{
 				    vec3 celerant_vrm_rgb = iris_FragData0.rgb;
 				    vec3 celerant_vrm_n = normalize(celerant_vrm_toon_normal);
-				    vec3 celerant_vrm_l = normalize(vec3(0.35, 0.80, 0.48));
+				    float celerant_vrm_light_len2 = dot(shadowLightPosition, shadowLightPosition);
+				    vec3 celerant_vrm_l = celerant_vrm_light_len2 > 0.0001
+				        ? shadowLightPosition * inversesqrt(celerant_vrm_light_len2)
+				        : normalize(vec3(0.35, 0.80, 0.48));
 				    vec3 celerant_vrm_v = vec3(0.0, 0.0, 1.0);
 				    float celerant_vrm_ndl = max(dot(celerant_vrm_n, celerant_vrm_l), 0.0);
-				    float celerant_vrm_ramp = celerant_vrm_ndl < 0.32 ? 0.56 : (celerant_vrm_ndl < 0.68 ? 0.78 : 1.0);
+				    float celerant_vrm_ramp = celerant_vrm_ndl < 0.32 ? 0.62 : (celerant_vrm_ndl < 0.68 ? 0.82 : 1.0);
 				    float celerant_vrm_fresnel = pow(1.0 - max(dot(celerant_vrm_n, celerant_vrm_v), 0.0), 3.0);
 				    vec3 celerant_vrm_h = normalize(celerant_vrm_l + celerant_vrm_v);
 				    float celerant_vrm_spec = step(0.965, max(dot(celerant_vrm_n, celerant_vrm_h), 0.0));
@@ -199,7 +208,8 @@ public final class IrisToonPatcher {
 		String patchedFragment = patchFragment(fragment, true);
 		String fallbackFragment = patchFragment(fragment, false);
 		assert patchedVertex.contains(MARKER_VARYING) && patchedVertex.contains(NORMAL_VARYING)
-				&& patchedFragment.contains("celerant_vrm_ramp") && patchedFragment.contains("fwidth")
+				&& patchedFragment.contains("celerant_vrm_ramp") && patchedFragment.contains("shadowLightPosition")
+				&& patchedFragment.contains("fwidth")
 				&& fallbackFragment.contains("celerant_vrm_quantized_luma")
 				&& NON_PRIMARY_FRAGMENT_OUTPUT.matcher("iris_FragData1 = vec4(0.0);").find()
 				: "glsl-transformer toon patch self-check failed";

@@ -1,13 +1,18 @@
 # Graph Report - celerant  (2026-08-05)
 
 ## Corpus Check
-- 16 files · ~7,807 words
+- 16 files · ~8,175 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 149 nodes · 323 edges · 17 communities (12 shown, 5 thin omitted)
+- 151 nodes · 335 edges · 16 communities (11 shown, 5 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 4 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
+
+## Graph Freshness
+- Built from commit: `32900037`
+- Run `git rev-parse HEAD` and compare to check if the graph is stale.
+- Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - IrisToonPatcher
@@ -15,7 +20,6 @@
 - .finishLoad
 - CelerantClientGameTest
 - VrmRuntime.java
-- IrisTransformPatcherMixin.java
 - NodeModel
 - .register
 - Celerant VRM
@@ -28,7 +32,7 @@
 
 ## God Nodes (most connected - your core abstractions)
 1. `VrmRuntime` - 56 edges
-2. `CelerantClientGameTest` - 18 edges
+2. `CelerantClientGameTest` - 20 edges
 3. `IrisToonPatcher` - 15 edges
 4. `VrmClientCommands` - 6 edges
 5. `RawBinding` - 6 edges
@@ -51,27 +55,23 @@
 ## Import Cycles
 - None detected.
 
-## Communities (17 total, 5 thin omitted)
+## Communities (16 total, 5 thin omitted)
 
 ### Community 0 - "IrisToonPatcher"
-Cohesion: 0.20
-Nodes (7): ASTParser, Pattern, IrisToonPatcher, Logger, Parameters, PatchShaderType, TranslationUnit
+Cohesion: 0.14
+Nodes (13): ASTParser, CallbackInfoReturnable, Inject, Mixin, Pattern, IrisToonPatcher, Logger, Parameters (+5 more)
 
 ### Community 2 - ".finishLoad"
 Cohesion: 0.22
 Nodes (3): IdentityHashMap, RenderedGltfModel, Vec3
 
 ### Community 3 - "CelerantClientGameTest"
-Cohesion: 0.21
-Nodes (7): ClientGameTestContext, FabricClientGameTest, Minecraft, CelerantClientGameTest, Override, TestServerConnection, TestSingleplayerContext
+Cohesion: 0.20
+Nodes (8): ByteBuffer, ClientGameTestContext, FabricClientGameTest, Minecraft, CelerantClientGameTest, Override, TestServerConnection, TestSingleplayerContext
 
 ### Community 4 - "VrmRuntime.java"
-Cohesion: 0.27
-Nodes (5): ByteBuffer, Identifier, LevelRenderContext, Celerant, Logger
-
-### Community 5 - "IrisTransformPatcherMixin.java"
-Cohesion: 0.43
-Nodes (6): CallbackInfoReturnable, Inject, Mixin, IrisTransformPatcherMixin, Parameters, PatchShaderType
+Cohesion: 0.31
+Nodes (4): Identifier, LevelRenderContext, Celerant, Logger
 
 ### Community 6 - "NodeModel"
 Cohesion: 0.43
@@ -102,6 +102,8 @@ Nodes (4): JsonArray, JsonObject, RawBinding, RawExpression
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `VrmRuntime` connect `VrmRuntime` to `.finishLoad`, `CelerantClientGameTest`, `VrmRuntime.java`, `NodeModel`, `.register`, `.onInitializeClient`, `.readModel`, `.parseRawExpressions`?**
-  _High betweenness centrality (0.339) - this node is a cross-community bridge._
+  _High betweenness centrality (0.341) - this node is a cross-community bridge._
 - **What connects `release.sh script`, `graphify`, `요구 모드` to the rest of the system?**
   _7 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Should `IrisToonPatcher` be split into smaller, more focused modules?**
+  _Cohesion score 0.14245014245014245 - nodes in this community are weakly interconnected._
