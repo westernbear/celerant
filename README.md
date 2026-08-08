@@ -6,7 +6,7 @@ Minecraft 26.2 Fabric 클라이언트에서 MCglTF로 로컬 VRM 0.x/1.0 모델�
 
 - Fabric Loader 0.19.3+
 - Fabric API 0.156.0+26.2
-- [MCglTF 26.2-Fabric-2.3.1.0](https://github.com/westernbear/MCglTF-1.20.4/releases)
+- [MCglTF 26.2-Fabric-2.3.2.0](https://github.com/westernbear/MCglTF-1.20.4/releases)
 - Iris 1.11.2+와 Iris가 요구하는 Sodium 0.9.x
 - [OneConfig 1.1.6 for Fabric 26.2](https://modrinth.com/mod/oneconfig/version/UCFu181L)와 OneConfig가 요구하는 Compose Multiplatform, Fabric Language Kotlin
 
@@ -37,7 +37,7 @@ Celerant는 ShaderPack ZIP이나 GLSL 원본을 수정·저장·재배포하지 
 
 현재 런타임 패치는 Iris의 표준 vertex+fragment entity 프로그램 중 단일 색상 attachment를 쓰는 팩을 대상으로 합니다. geometry/tessellation stage 또는 여러 G-buffer attachment를 쓰는 deferred 팩은 데이터 계약을 훼손하지 않도록 패치하지 않습니다.
 
-`VRMC_materials_mtoon`은 현재 모델 전체에 적용되는 일반 NPR ramp/rim/specular 보정으로 처리합니다. 재질별 shade texture, matcap, outline 폭까지 정확히 전달하려면 MCglTF의 primitive별 material 신호 경로가 추가로 필요합니다.
+MCglTF 2.3.2.0+는 VRM 0.x의 재질별 MToon base/shade texture와 shade color를 전용 managed pass로 처리합니다. Celerant의 Iris 보정은 이 pass를 건드리지 않고, 지원되는 일반 entity pass에만 제한적으로 적용합니다.
 
 VRM 모델과 사용자가 설치한 ShaderPack의 라이선스·이용 조건은 각각 사용자가 확인해야 합니다.
 
