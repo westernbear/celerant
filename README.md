@@ -74,7 +74,7 @@ CELERANT_VISUAL_VRM=/absolute/path/model.vrm \
 xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runClientGameTest --offline
 ```
 
-2026-08-08 기준 Iris 1.11.2 / MCglTF 2.3.2.1에서 Jingburger VRM의 ON/OFF 시각 신호와 GLSL patch를 확인한 팩은 Complementary Reimagined·Unbound, BSL, Solas, Bliss, MakeUp Ultra Fast, Mellow, AstraLex, Miniature, I Like Vanilla, E-Lite, BVS, Sildur's Vibrant, Lethal, Sildur's Enhanced Default입니다. RedHat과 Trailer는 llvmpipe VRAM 부족으로 pipeline을 만들지 못했으며, Noble은 Iris 1.11.2의 `RENDER_SCALE` directive parse 오류, RenderPearl·Clarity·Alpha Piscium은 이 Iris 버전에서 pipeline 비활성으로 기록됐습니다. 이 다섯 팩은 지원으로 표시하지 않습니다.
+2026-08-08 기준 Iris 1.11.2 / MCglTF 2.3.2.1에서 Jingburger VRM의 ON/OFF 시각 신호와 GLSL patch를 확인한 팩은 Complementary Reimagined·Unbound, BSL, Solas, Bliss, MakeUp Ultra Fast, Mellow, AstraLex, Miniature, I Like Vanilla, E-Lite, RedHat, BVS, Sildur's Vibrant, Lethal, Trailer, Sildur's Enhanced Default입니다. RedHat과 Trailer는 llvmpipe가 `GL_NVX_gpu_memory_info`로 29 MiB만 보고해 처음에는 막혔고, 테스트에서 `MESA_EXTENSION_OVERRIDE=-GL_NVX_gpu_memory_info`로 Iris의 4 GiB 폴백을 사용해 검증했습니다. 실제 GPU에서는 이 변수를 설정하지 않습니다. Noble은 Iris 1.11.2의 `RENDER_SCALE` directive parse 오류, RenderPearl·Clarity·Alpha Piscium은 이 Iris 버전에서 pipeline 비활성으로 기록됐습니다. 이 네 팩은 지원으로 표시하지 않습니다.
 
 ## CI와 릴리스
 
