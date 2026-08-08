@@ -295,17 +295,11 @@ public final class IrisToonPatcher {
 				        vec3 celerant_vrm_l = celerant_vrm_light_len2 > 0.0001
 				            ? shadowLightPosition * inversesqrt(celerant_vrm_light_len2)
 				            : normalize(vec3(0.35, 0.80, 0.48));
-				        vec3 celerant_vrm_v = vec3(0.0, 0.0, 1.0);
 				        float celerant_vrm_ndl = max(dot(celerant_vrm_n, celerant_vrm_l), 0.0);
-				        float celerant_vrm_ramp = celerant_vrm_ndl < 0.32 ? 0.70 : (celerant_vrm_ndl < 0.68 ? 0.84 : 0.94);
-				        float celerant_vrm_nv = clamp(abs(dot(celerant_vrm_n, celerant_vrm_v)), 0.0, 1.0);
-				        float celerant_vrm_fresnel = pow(1.0 - celerant_vrm_nv, 3.0);
-				        float celerant_vrm_edge = smoothstep(0.10, 0.24, fwidth(celerant_vrm_ndl));
-				        vec3 celerant_vrm_lit = celerant_vrm_rgb * celerant_vrm_ramp;
-				        vec3 celerant_vrm_headroom = max(vec3(1.0) - celerant_vrm_lit, vec3(0.0));
-				        celerant_vrm_lit += min(max(celerant_vrm_rgb, vec3(0.0)) * (0.05 * celerant_vrm_fresnel),
-				            celerant_vrm_headroom);
-				        vec3 celerant_vrm_result = mix(celerant_vrm_lit, celerant_vrm_lit * 0.74, celerant_vrm_edge);
+				        float celerant_vrm_ramp = smoothstep(0.20, 0.70, celerant_vrm_ndl);
+				        vec3 celerant_vrm_shade = celerant_vrm_rgb * 0.72;
+				        vec3 celerant_vrm_lit = celerant_vrm_rgb * 0.96;
+				        vec3 celerant_vrm_result = mix(celerant_vrm_shade, celerant_vrm_lit, celerant_vrm_ramp);
 				        %s
 				    }
 				}
@@ -377,7 +371,7 @@ public final class IrisToonPatcher {
 				&& vertexGuard >= 0 && vertexGuard < patchedVertex.indexOf("normalize(iris_NormalMat * iris_Normal)")
 				&& patchedFragment.contains("celerant_vrm_ramp") && patchedFragment.contains("shadowLightPosition")
 				&& fragmentGuard >= 0 && fragmentGuard < patchedFragment.indexOf("normalize(" + NORMAL_VARYING + ")")
-				&& patchedFragment.contains("celerant_vrm_headroom") && !patchedFragment.contains("celerant_vrm_spec")
+				&& patchedFragment.contains("celerant_vrm_shade") && !patchedFragment.contains("fwidth(")
 				&& fallbackFragment.contains("celerant_vrm_quantized_luma")
 				&& fallbackGuard >= 0 && fallbackGuard < fallbackFragment.indexOf("log2(")
 				&& !fallbackFragment.contains("celerant_vrm_edge_signal")

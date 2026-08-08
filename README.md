@@ -6,7 +6,7 @@ Minecraft 26.2 Fabric 클라이언트에서 MCglTF로 로컬 VRM 0.x/1.0 모델�
 
 - Fabric Loader 0.19.3+
 - Fabric API 0.156.0+26.2
-- [MCglTF 26.2-Fabric-2.3.2.1](https://github.com/westernbear/MCglTF-1.20.4/releases)
+- [MCglTF 26.2-Fabric-2.3.2.2](https://github.com/westernbear/MCglTF-1.20.4/releases)
 - Iris 1.11.2+와 Iris가 요구하는 Sodium 0.9.x
 - [OneConfig 1.1.6 for Fabric 26.2](https://modrinth.com/mod/oneconfig/version/UCFu181L)와 OneConfig가 요구하는 Compose Multiplatform, Fabric Language Kotlin
 
@@ -33,11 +33,11 @@ Minecraft 26.2 Fabric 클라이언트에서 MCglTF로 로컬 VRM 0.x/1.0 모델�
 
 ## ShaderPack 경계
 
-Celerant는 ShaderPack ZIP이나 GLSL 원본을 수정·저장·재배포하지 않습니다. Iris의 GLSL 변환이 끝난 런타임 문자열에 `celerant_` 심볼만 주입하며, 지원하지 않는 stage 구성이나 앵커를 만나면 원본 결과를 그대로 사용합니다. 카툰 수학은 특정 게임 또는 ShaderPack 코드를 복사하지 않은 일반적인 ramp, headroom 제한 rim, 명암 경계 기법입니다.
+Celerant는 ShaderPack ZIP이나 GLSL 원본을 수정·저장·재배포하지 않습니다. Iris의 GLSL 변환이 끝난 런타임 문자열에 `celerant_` 심볼만 주입하며, 지원하지 않는 stage 구성이나 앵커를 만나면 원본 결과를 그대로 사용합니다. 카툰 수학은 특정 게임 또는 ShaderPack 코드를 복사하지 않은 일반적인 부드러운 명암 ramp 기법입니다.
 
 현재 런타임 패치는 Iris의 표준 vertex+fragment entity 프로그램을 대상으로 합니다. 단일 색상 attachment는 일반 경로로 처리하고, 다중 G-buffer는 정확한 배포 ZIP과 출력 codec을 검증한 팩만 처리합니다. 그 외 geometry/tessellation stage 또는 알 수 없는 attachment 계약은 데이터 계약을 훼손하지 않도록 원본 그대로 둡니다.
 
-MCglTF 2.3.2.1+는 VRM 0.x의 재질별 MToon base/shade texture와 shade color를 전용 managed pass로 처리합니다. Iris ShaderPack이 활성화되면 MCglTF는 표준 entity pass로 전환해 pack의 G-buffer 계약과 Celerant의 marker-only 보정에 참여합니다.
+MCglTF 2.3.2.2+는 ShaderPack이 꺼진 경우 VRM 0.x 재질별 MToon base/shade texture, `_ShadeShift`, `_ShadeToony`, rim power를 전용 managed pass로 처리합니다. Iris ShaderPack이 활성화되면 MCglTF는 pack의 G-buffer 계약을 보존하기 위해 표준 entity pass로 전환하고, Celerant는 재질 독립의 부드러운 marker-only ramp만 적용합니다.
 
 VRM 모델과 사용자가 설치한 ShaderPack의 라이선스·이용 조건은 각각 사용자가 확인해야 합니다.
 
@@ -74,7 +74,7 @@ CELERANT_VISUAL_VRM=/absolute/path/model.vrm \
 xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runClientGameTest --offline
 ```
 
-2026-08-08 기준 Iris 1.11.2 / MCglTF 2.3.2.1에서 Jingburger VRM의 ON/OFF 시각 신호와 GLSL patch를 확인한 팩은 Complementary Reimagined·Unbound, BSL, Solas, Bliss, MakeUp Ultra Fast, Mellow, AstraLex, Miniature, I Like Vanilla, E-Lite, RedHat, BVS, Sildur's Vibrant, Lethal, Trailer, Sildur's Enhanced Default입니다. RedHat과 Trailer는 llvmpipe가 `GL_NVX_gpu_memory_info`로 29 MiB만 보고해 처음에는 막혔고, 테스트에서 `MESA_EXTENSION_OVERRIDE=-GL_NVX_gpu_memory_info`로 Iris의 4 GiB 폴백을 사용해 검증했습니다. 실제 GPU에서는 이 변수를 설정하지 않습니다. Noble은 Iris 1.11.2의 `RENDER_SCALE` directive parse 오류, RenderPearl·Clarity·Alpha Piscium은 이 Iris 버전에서 pipeline 비활성으로 기록됐습니다. 이 네 팩은 지원으로 표시하지 않습니다.
+2026-08-08 기준 Iris 1.11.2 / MCglTF 2.3.2.2에서 Jingburger VRM의 ON/OFF 시각 신호와 GLSL patch를 확인한 팩은 Complementary Reimagined·Unbound, BSL, Solas, Bliss, MakeUp Ultra Fast, Mellow, AstraLex, Miniature, I Like Vanilla, E-Lite, RedHat, BVS, Sildur's Vibrant, Lethal, Trailer, Sildur's Enhanced Default입니다. RedHat과 Trailer는 llvmpipe가 `GL_NVX_gpu_memory_info`로 29 MiB만 보고해 처음에는 막혔고, 테스트에서 `MESA_EXTENSION_OVERRIDE=-GL_NVX_gpu_memory_info`로 Iris의 4 GiB 폴백을 사용해 검증했습니다. 실제 GPU에서는 이 변수를 설정하지 않습니다. Noble은 Iris 1.11.2의 `RENDER_SCALE` directive parse 오류, RenderPearl·Clarity·Alpha Piscium은 이 Iris 버전에서 pipeline 비활성으로 기록됐습니다. 이 네 팩은 지원으로 표시하지 않습니다.
 
 ## CI와 릴리스
 

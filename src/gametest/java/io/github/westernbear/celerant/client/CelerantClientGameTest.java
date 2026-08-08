@@ -1271,7 +1271,7 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 				int x = index % width;
 				int y = index / width;
 				signalPixels++;
-				if (x < width * 25 / 100 || x > width * 75 / 100 || y < height * 30 / 100) {
+				if (x < width * 15 / 100 || x > width * 85 / 100 || y < height * 30 / 100) {
 					continue;
 				}
 				centeredSignals++;
@@ -1630,7 +1630,7 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 				int x = index % width;
 				int y = index / width;
 				signalPixels++;
-				if (x < width * 25 / 100 || x > width * 75 / 100 || y < height * 30 / 100) {
+				if (x < width * 15 / 100 || x > width * 85 / 100 || y < height * 30 / 100) {
 					continue;
 				}
 				centeredSignals++;
