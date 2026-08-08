@@ -10,8 +10,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -29,6 +35,7 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestServerConnection;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.gl.blending.AlphaTest;
@@ -51,6 +58,8 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		"org.polyfrost.oneconfig.internal.ui.compose.impls.OneConfigUIScreen";
 	private static final String LOCAL_VISUAL_VRM = "_local_visual.vrm";
 	private static final String DISABLE_TOON_PATCH_PROPERTY = "celerant.testing.disableToonPatch";
+	private static final FrameTimeRecorder MATRIX_FRAME_TIMES = new FrameTimeRecorder();
+	private static boolean matrixFrameRecorderRegistered;
 	private static volatile Path nextOneConfigFileSelection;
 	private static volatile FileDialogRequest lastOneConfigFileDialog;
 	private static final String VERTEX_SHADER = """
@@ -87,6 +96,11 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 	@Override
 	public void runTest(ClientGameTestContext context) {
 		Path gameDirectory = context.computeOnClient(client -> client.gameDirectory.toPath());
+		String matrixDirectory = System.getenv("CELERANT_SHADERPACK_DIR");
+		if (matrixDirectory != null && !matrixDirectory.isBlank()) {
+			runShaderPackMatrix(context, gameDirectory, Path.of(matrixDirectory).toAbsolutePath().normalize());
+			return;
+		}
 		Path packRoot = gameDirectory.resolve("shaderpacks").resolve(PACK_NAME);
 		Path modelPath = gameDirectory.resolve("celerant/models/minimal.vrm");
 
@@ -916,6 +930,423 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		}
 	}
 
+	private static void runShaderPackMatrix(ClientGameTestContext context, Path gameDirectory,
+		Path sourceDirectory) {
+		require(Files.isDirectory(sourceDirectory),
+			"CELERANT_SHADERPACK_DIR must point to a directory containing ShaderPack ZIPs");
+		require(prepareLocalVisualModel(gameDirectory),
+			"CELERANT_VISUAL_VRM is required when CELERANT_SHADERPACK_DIR is set");
+
+		List<Path> sources;
+		try (var files = Files.list(sourceDirectory)) {
+			sources = files
+				.filter(Files::isRegularFile)
+				.filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".zip"))
+				.sorted(Comparator.comparing(path -> path.getFileName().toString()))
+				.toList();
+		} catch (IOException exception) {
+			throw new AssertionError("could not list CELERANT_SHADERPACK_DIR", exception);
+		}
+
+		boolean previousToonPatch = context.computeOnClient(client ->
+			io.github.westernbear.celerant.client.iris.IrisToonPatcher.isEnabled());
+		context.runOnClient(client -> {
+			io.github.westernbear.celerant.client.iris.IrisToonPatcher.setEnabled(true);
+			if (!matrixFrameRecorderRegistered) {
+				LevelRenderEvents.END_MAIN.register(renderContext -> MATRIX_FRAME_TIMES.record(System.nanoTime()));
+				matrixFrameRecorderRegistered = true;
+			}
+		});
+
+		Path report = gameDirectory.resolve("celerant-shaderpack-matrix.tsv");
+		List<MatrixRow> rows = new ArrayList<>();
+		List<Path> workingCopies = new ArrayList<>();
+		try (TestSingleplayerContext world = context.worldBuilder().setUseConsistentSettings(true).create()) {
+			TestServerConnection connection = world.getConnection();
+			connection.waitForChunksRender(true, 1200);
+			world.getServer().runCommand("weather clear");
+			world.getServer().runCommand("gamerule advance_time false");
+			world.getServer().runCommand("kill @e[type=minecraft:slime]");
+			world.getServer().runCommand("time set 6000");
+			connection.waitForClientboundPackets();
+
+			sendCommand(context, "celerant vrm load " + LOCAL_VISUAL_VRM, "Loading VRM asynchronously");
+			context.waitFor(client -> !VrmRuntime.getInstance().isLoading()
+				&& VrmRuntime.getInstance().info().contains("VRM: " + LOCAL_VISUAL_VRM), 2400);
+			double y = context.computeOnClient(client -> client.player.getY());
+			teleport(context, world, connection, 0.0, y, 0.0);
+			sendCommand(context, "celerant vrm here", "VRM position set to your current position");
+			sendCommand(context, "celerant vrm scale 1", "VRM scale set to 1.0");
+			teleport(context, world, connection, 0.0, y, 4.0);
+
+			int previousFov = context.computeOnClient(client -> client.options.fov().get());
+			boolean previousVsync = context.computeOnClient(client -> client.options.enableVsync().get());
+			int previousFramerateLimit = context.computeOnClient(client -> client.options.framerateLimit().get());
+			int previousWidth = context.computeOnClient(client -> client.getWindow().getWidth());
+			int previousHeight = context.computeOnClient(client -> client.getWindow().getHeight());
+			boolean guiToggled = false;
+			try {
+				context.getInput().resizeWindow(1280, 720);
+				context.waitFor(client -> client.getWindow().getWidth() == 1280
+					&& client.getWindow().getHeight() == 720, 100);
+				context.runOnClient(client -> {
+					client.options.fov().set(30);
+					client.options.enableVsync().set(false);
+					client.options.framerateLimit().set(net.minecraft.client.Options.UNLIMITED_FRAMERATE_CUTOFF);
+				});
+				setCamera(context, CameraType.FIRST_PERSON);
+				context.getInput().lookAt(180.0F, 8.0F);
+				context.getInput().pressKey(options -> options.keyToggleGui);
+				guiToggled = true;
+				MatrixState baseline = captureMatrixState(context, null, false, false,
+					"celerant-shader-matrix-baseline-off", true);
+				writeMatrixReportStart(report, sources.size(), baseline);
+
+				for (int index = 0; index < sources.size(); index++) {
+					MatrixRow row = runShaderPackMatrixRow(context, gameDirectory, sources.get(index), index + 1,
+						workingCopies);
+					rows.add(row);
+					appendMatrixRow(report, row);
+				}
+			} finally {
+				System.clearProperty(DISABLE_TOON_PATCH_PROPERTY);
+				cleanupMatrixWorkingPacks(context, workingCopies);
+				context.runOnClient(client -> {
+					client.options.fov().set(previousFov);
+					client.options.enableVsync().set(previousVsync);
+					client.options.framerateLimit().set(previousFramerateLimit);
+				});
+				setCamera(context, CameraType.FIRST_PERSON);
+				context.getInput().resizeWindow(previousWidth, previousHeight);
+				if (guiToggled) {
+					context.getInput().pressKey(options -> options.keyToggleGui);
+				}
+			}
+		} finally {
+			io.github.westernbear.celerant.client.iris.IrisToonPatcher.setEnabled(previousToonPatch);
+		}
+
+		require(rows.size() == sources.size(),
+			"shader matrix must write exactly one row per input ZIP (rows=" + rows.size()
+				+ ", ZIPs=" + sources.size() + ")");
+		System.out.println("[Celerant shader matrix] " + report + " (packs=" + rows.size() + ")");
+	}
+
+	private static MatrixRow runShaderPackMatrixRow(ClientGameTestContext context, Path gameDirectory,
+		Path source, int index, List<Path> workingCopies) {
+		Path shaderpacks = gameDirectory.resolve("shaderpacks");
+		String prefix = String.format(Locale.ROOT, "celerant-shader-matrix-%03d", index);
+		String sourceHashBefore = "";
+		String copiedHash = "";
+		String error = "";
+		Path workingPack = null;
+		try {
+			Files.createDirectories(shaderpacks);
+			workingPack = Files.createTempFile(shaderpacks, prefix + "-", ".zip");
+			workingCopies.add(workingPack);
+			workingPack.toFile().deleteOnExit();
+		} catch (Exception exception) {
+			error = addProblem(error, "reserve working copy", exception);
+		}
+		String packName = workingPack == null ? prefix + "-missing.zip" : workingPack.getFileName().toString();
+		try {
+			sourceHashBefore = sha256(source);
+		} catch (Exception exception) {
+			error = addProblem(error, "source hash before", exception);
+		}
+		try {
+			if (workingPack == null) {
+				throw new IOException("working ZIP path is unavailable");
+			}
+			Files.copy(source, workingPack, StandardCopyOption.REPLACE_EXISTING);
+			copiedHash = sha256(workingPack);
+			if (!Iris.isValidShaderpack(workingPack)) {
+				error = addProblem(error, "Iris rejected the working ZIP");
+			}
+		} catch (Exception | AssertionError exception) {
+			error = addProblem(error, "working copy", exception);
+		}
+		Map<String, Long> dumpSnapshot = Map.of();
+		try {
+			dumpSnapshot = snapshotDebugDump(gameDirectory.resolve("patched_shaders"));
+		} catch (Exception exception) {
+			error = addProblem(error, "snapshot debug dump", exception);
+		}
+
+		MatrixState on = captureMatrixState(context, packName, true, false, prefix + "-on", true);
+		ShaderDumpStats dumpStats = new ShaderDumpStats(0, 0);
+		try {
+			dumpStats = countPatchedEntityShaders(gameDirectory.resolve("patched_shaders"), dumpSnapshot);
+		} catch (Exception exception) {
+			error = addProblem(error, "inspect debug dump", exception);
+		}
+		MatrixState off = captureMatrixState(context, packName, true, true, prefix + "-off", true);
+		MatrixState restored = captureMatrixState(context, packName, true, false, prefix + "-restored", false);
+
+		ToonSignal toonSignal = new ToonSignal(false, 0, 0, "");
+		try {
+			toonSignal = measureToonSignal(on.image(), off.image(), restored.image());
+		} catch (Exception exception) {
+			error = addProblem(error, "toon signal", exception);
+		}
+		String sourceHashAfter = "";
+		try {
+			sourceHashAfter = sha256(source);
+		} catch (Exception exception) {
+			error = addProblem(error, "source hash after", exception);
+		}
+		boolean sourceHashIntact = !sourceHashBefore.isEmpty() && sourceHashBefore.equals(sourceHashAfter);
+		boolean copyHashMatches = !sourceHashBefore.isEmpty() && sourceHashBefore.equals(copiedHash);
+		return new MatrixRow(source, sourceHashBefore, sourceHashAfter, sourceHashIntact, copyHashMatches,
+			on, dumpStats, off, restored, toonSignal, error);
+	}
+
+	private static void cleanupMatrixWorkingPacks(ClientGameTestContext context, List<Path> workingCopies) {
+		try {
+			context.runOnClient(client -> {
+				Iris.getIrisConfig().setShadersEnabled(false);
+				Iris.getIrisConfig().save();
+				Iris.reload();
+			});
+		} catch (Exception | AssertionError exception) {
+			System.err.println("[Celerant shader matrix] could not close the final working pack: " + exception);
+		}
+		for (Path workingCopy : workingCopies) {
+			try {
+				Files.deleteIfExists(workingCopy);
+			} catch (IOException exception) {
+				System.err.println("[Celerant shader matrix] deferred working ZIP cleanup: " + workingCopy);
+			}
+		}
+	}
+
+	private static MatrixState captureMatrixState(ClientGameTestContext context, String packName,
+		boolean shadersEnabled, boolean toonDisabled, String screenshotName, boolean measureFrames) {
+		long[] reloadNanos = {-1L};
+		String error = "";
+		try {
+			context.runOnClient(client -> {
+				if (toonDisabled) {
+					System.setProperty(DISABLE_TOON_PATCH_PROPERTY, "true");
+				} else {
+					System.clearProperty(DISABLE_TOON_PATCH_PROPERTY);
+				}
+				if (packName != null) {
+					Iris.getIrisConfig().setShaderPackName(packName);
+				}
+				Iris.getIrisConfig().setShadersEnabled(shadersEnabled);
+				Iris.getIrisConfig().setDebugEnabled(true);
+				Iris.getIrisConfig().save();
+				long started = System.nanoTime();
+				try {
+					Iris.reload();
+				} finally {
+					reloadNanos[0] = System.nanoTime() - started;
+				}
+			});
+			context.waitFor(client -> Iris.getStoredError().isPresent() || !shadersEnabled
+				|| packName.equals(Iris.getCurrentPackName())
+					&& Iris.getPipelineManager().getPipeline().isPresent(), 1200);
+		} catch (Exception | AssertionError exception) {
+			error = addProblem(error, "reload", exception);
+		}
+
+		FrameStats frames = FrameStats.EMPTY;
+		if (measureFrames) {
+			try {
+				frames = captureFrameStats(context);
+			} catch (Exception | AssertionError exception) {
+				error = addProblem(error, "frame samples", exception);
+			}
+		} else {
+			try {
+				context.waitTicks(20);
+			} catch (Exception | AssertionError exception) {
+				error = addProblem(error, "restore warmup", exception);
+			}
+		}
+
+		Path image = null;
+		try {
+			image = context.takeScreenshot(screenshotName);
+		} catch (Exception | AssertionError exception) {
+			error = addProblem(error, "capture", exception);
+		}
+		String irisError = "";
+		boolean packInUse = !shadersEnabled;
+		try {
+			irisError = context.computeOnClient(client -> Iris.getStoredError()
+				.map(Throwable::toString).orElse(""));
+			packInUse = context.computeOnClient(client -> Iris.isPackInUseQuick()
+				&& Iris.getPipelineManager().getPipeline().isPresent()
+				&& Iris.getStoredError().isEmpty());
+			if (shadersEnabled && !packInUse) {
+				error = addProblem(error, "Iris shader pack inactive");
+			}
+		} catch (Exception | AssertionError exception) {
+			error = addProblem(error, "read Iris error", exception);
+		}
+		return new MatrixState(reloadNanos[0] < 0 ? Double.NaN : reloadNanos[0] / 1_000_000.0,
+			frames, image, irisError, packInUse, error);
+	}
+
+	private static FrameStats captureFrameStats(ClientGameTestContext context) {
+		MATRIX_FRAME_TIMES.start();
+		try {
+			context.waitFor(client -> MATRIX_FRAME_TIMES.isComplete(), 1200);
+			return MATRIX_FRAME_TIMES.snapshot();
+		} finally {
+			MATRIX_FRAME_TIMES.stop();
+		}
+	}
+
+	private static Map<String, Long> snapshotDebugDump(Path debugDirectory) throws IOException {
+		if (!Files.isDirectory(debugDirectory)) {
+			return Map.of();
+		}
+		Map<String, Long> snapshot = new HashMap<>();
+		try (var files = Files.list(debugDirectory)) {
+			for (Path path : files.filter(Files::isRegularFile).toList()) {
+				snapshot.put(path.getFileName().toString(), Files.getLastModifiedTime(path).toMillis());
+			}
+		}
+		return snapshot;
+	}
+
+	private static ShaderDumpStats countPatchedEntityShaders(Path debugDirectory,
+		Map<String, Long> beforeReload) throws IOException {
+		if (!Files.isDirectory(debugDirectory)) {
+			return new ShaderDumpStats(0, 0);
+		}
+		int patched = 0;
+		int total = 0;
+		try (var files = Files.list(debugDirectory)) {
+			for (Path fragment : files.filter(Files::isRegularFile)
+				.filter(path -> path.getFileName().toString().matches("\\d+_entities_.+\\.fsh"))
+				.sorted().toList()) {
+				String filename = fragment.getFileName().toString();
+				Long previousModified = beforeReload.get(filename);
+				if (previousModified != null
+					&& previousModified.longValue() == Files.getLastModifiedTime(fragment).toMillis()) {
+					continue;
+				}
+				total++;
+				Path vertex = fragment.resolveSibling(filename.substring(0, filename.length() - 4) + ".vsh");
+				if (Files.isRegularFile(vertex)
+					&& Files.readString(vertex).contains("celerant_vrm_toon_marker")
+					&& Files.readString(fragment).contains("celerant_vrm_toon_marker")) {
+					patched++;
+				}
+			}
+		}
+		return new ShaderDumpStats(patched, total);
+	}
+
+	private static ToonSignal measureToonSignal(Path onPath, Path offPath, Path restoredPath) throws IOException {
+		if (onPath == null || offPath == null || restoredPath == null) {
+			throw new IOException("all three matrix screenshots are required");
+		}
+		try (NativeImage on = NativeImage.read(Files.newInputStream(onPath));
+			 NativeImage off = NativeImage.read(Files.newInputStream(offPath));
+			 NativeImage restored = NativeImage.read(Files.newInputStream(restoredPath))) {
+			if (on.getWidth() != off.getWidth() || on.getHeight() != off.getHeight()
+				|| on.getWidth() != restored.getWidth() || on.getHeight() != restored.getHeight()) {
+				throw new IOException("matrix screenshots use different viewports");
+			}
+			int width = on.getWidth();
+			int height = on.getHeight();
+			int[] onPixels = on.getPixels();
+			int[] offPixels = off.getPixels();
+			int[] restoredPixels = restored.getPixels();
+			int signalPixels = 0;
+			int centeredSignals = 0;
+			int[] bounds = {width, height, -1, -1};
+			for (int index = 0; index < onPixels.length; index++) {
+				int idleDelta = rgbDistance(onPixels[index], restoredPixels[index]);
+				int toonDelta = Math.min(rgbDistance(onPixels[index], offPixels[index]),
+					rgbDistance(restoredPixels[index], offPixels[index]));
+				if (idleDelta > 18 || toonDelta < Math.max(36, idleDelta * 3)) {
+					continue;
+				}
+				int x = index % width;
+				int y = index / width;
+				signalPixels++;
+				if (x < width * 25 / 100 || x > width * 75 / 100 || y < height * 30 / 100) {
+					continue;
+				}
+				centeredSignals++;
+				bounds[0] = Math.min(bounds[0], x);
+				bounds[1] = Math.min(bounds[1], y);
+				bounds[2] = Math.max(bounds[2], x);
+				bounds[3] = Math.max(bounds[3], y);
+			}
+			boolean detected = signalPixels >= Math.max(500, width * height / 1000)
+				&& centeredSignals * 100 >= signalPixels * 95
+				&& bounds[2] - bounds[0] >= width * 5 / 100
+				&& bounds[3] - bounds[1] >= height * 15 / 100;
+			return new ToonSignal(detected, signalPixels, centeredSignals, Arrays.toString(bounds));
+		}
+	}
+
+	private static String sha256(Path path) throws IOException, NoSuchAlgorithmException {
+		MessageDigest digest = MessageDigest.getInstance("SHA-256");
+		try (var input = Files.newInputStream(path)) {
+			byte[] buffer = new byte[8192];
+			for (int read; (read = input.read(buffer)) >= 0;) {
+				digest.update(buffer, 0, read);
+			}
+		}
+		return HexFormat.of().formatHex(digest.digest());
+	}
+
+	private static void writeMatrixReportStart(Path report, int packCount, MatrixState baseline) {
+		String baselineLine = String.join("\t", "# baseline", "shaders=off",
+			"packs=" + packCount,
+			"reload_ms=" + metric(baseline.reloadMs()),
+			"samples=" + baseline.frames().samples(),
+			"median_ms=" + metric(baseline.frames().medianMs()),
+			"p95_ms=" + metric(baseline.frames().p95Ms()),
+			"p99_ms=" + metric(baseline.frames().p99Ms()),
+			"image=" + tsvPath(baseline.image()),
+			"iris_error=" + tsv(baseline.irisError()),
+			"error=" + tsv(baseline.error())) + System.lineSeparator();
+		try {
+			Files.writeString(report, baselineLine + MatrixRow.HEADER + System.lineSeparator(),
+				StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+		} catch (IOException exception) {
+			throw new AssertionError("could not create shader matrix TSV", exception);
+		}
+	}
+
+	private static void appendMatrixRow(Path report, MatrixRow row) {
+		try {
+			Files.writeString(report, row.toTsv() + System.lineSeparator(), StandardCharsets.UTF_8,
+				StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+		} catch (IOException exception) {
+			throw new AssertionError("could not append shader matrix TSV", exception);
+		}
+	}
+
+	private static String addProblem(String existing, String problem) {
+		return existing.isEmpty() ? problem : existing + " | " + problem;
+	}
+
+	private static String addProblem(String existing, String operation, Throwable exception) {
+		return addProblem(existing, operation + ": " + exception);
+	}
+
+	private static String metric(double value) {
+		return Double.isNaN(value) ? "" : String.format(Locale.ROOT, "%.3f", value);
+	}
+
+	private static String tsvPath(Path path) {
+		return path == null ? "" : tsv(path.toString());
+	}
+
+	private static String tsv(String value) {
+		return value == null ? "" : value.replace('\t', ' ').replace('\r', ' ').replace('\n', ' ');
+	}
+
 	private static void enableShaderPack(ClientGameTestContext context, Path packRoot) {
 		try {
 			context.runOnClient(client -> {
@@ -1380,6 +1811,7 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 			"CELERANT_VISUAL_VRM must point to a .vrm file");
 		try {
 			Path target = gameDirectory.resolve("celerant/models").resolve(LOCAL_VISUAL_VRM);
+			Files.createDirectories(target.getParent());
 			Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
 			target.toFile().deleteOnExit();
 			return true;
@@ -1541,6 +1973,112 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		}
 		glb.putInt(binaryChunk.length).putInt(0x004E4942).put(binaryChunk);
 		return glb.array();
+	}
+
+	private record FrameStats(int samples, double medianMs, double p95Ms, double p99Ms) {
+		private static final FrameStats EMPTY = new FrameStats(0, Double.NaN, Double.NaN, Double.NaN);
+	}
+
+	private static final class FrameTimeRecorder {
+		private static final int WARMUP_FRAMES = 5;
+		private final long[] samples = new long[12];
+		private long previousNanos;
+		private int warmupFrames;
+		private int sampleCount;
+		private boolean active;
+
+		private synchronized void start() {
+			previousNanos = 0L;
+			warmupFrames = 0;
+			sampleCount = 0;
+			active = true;
+		}
+
+		private synchronized void record(long nowNanos) {
+			if (!active) {
+				return;
+			}
+			if (previousNanos != 0L) {
+				long frameNanos = nowNanos - previousNanos;
+				if (warmupFrames < WARMUP_FRAMES) {
+					warmupFrames++;
+				} else {
+					samples[sampleCount++] = frameNanos;
+					if (sampleCount == samples.length) {
+						active = false;
+					}
+				}
+			}
+			previousNanos = nowNanos;
+		}
+
+		private synchronized boolean isComplete() {
+			return sampleCount == samples.length;
+		}
+
+		private synchronized FrameStats snapshot() {
+			if (sampleCount == 0) {
+				return FrameStats.EMPTY;
+			}
+			long[] sorted = Arrays.copyOf(samples, sampleCount);
+			Arrays.sort(sorted);
+			double median = sampleCount % 2 == 0
+				? (sorted[sampleCount / 2 - 1] + sorted[sampleCount / 2]) / 2_000_000.0
+				: sorted[sampleCount / 2] / 1_000_000.0;
+			double p95 = sorted[(int) Math.ceil(sampleCount * 0.95) - 1] / 1_000_000.0;
+			double p99 = sorted[(int) Math.ceil(sampleCount * 0.99) - 1] / 1_000_000.0;
+			return new FrameStats(sampleCount, median, p95, p99);
+		}
+
+		private synchronized void stop() {
+			active = false;
+		}
+	}
+
+	private record MatrixState(double reloadMs, FrameStats frames, Path image, String irisError,
+		boolean packInUse, String error) {
+	}
+
+	private record ShaderDumpStats(int patched, int total) {
+	}
+
+	private record ToonSignal(boolean detected, int signalPixels, int centeredPixels, String bounds) {
+	}
+
+	private record MatrixRow(
+		Path source,
+		String sourceHashBefore,
+		String sourceHashAfter,
+		boolean sourceHashIntact,
+		boolean copyHashMatches,
+		MatrixState on,
+		ShaderDumpStats dump,
+		MatrixState off,
+		MatrixState restored,
+		ToonSignal toon,
+		String error
+	) {
+		private static final String HEADER = String.join("\t",
+			"pack", "source_zip", "sha256_before", "sha256_after", "source_hash_intact", "copy_hash_matches",
+			"on_reload_ms", "on_frame_samples", "on_median_ms", "on_p95_ms", "on_p99_ms", "on_image",
+			"on_iris_error", "on_pack_in_use", "on_error", "patched_entity_programs", "total_entity_programs",
+			"off_reload_ms", "off_frame_samples", "off_median_ms", "off_p95_ms", "off_p99_ms", "off_image",
+			"off_iris_error", "off_pack_in_use", "off_error", "restored_reload_ms", "restored_image", "restored_iris_error",
+			"restored_pack_in_use", "restored_error", "toon_signal", "toon_signal_pixels", "toon_centered_pixels", "toon_bounds", "error");
+
+		private String toTsv() {
+			return String.join("\t",
+				tsv(source.getFileName().toString()), tsvPath(source), sourceHashBefore, sourceHashAfter,
+				Boolean.toString(sourceHashIntact), Boolean.toString(copyHashMatches),
+				metric(on.reloadMs()), Integer.toString(on.frames().samples()), metric(on.frames().medianMs()),
+				metric(on.frames().p95Ms()), metric(on.frames().p99Ms()), tsvPath(on.image()),
+				tsv(on.irisError()), Boolean.toString(on.packInUse()), tsv(on.error()), Integer.toString(dump.patched()), Integer.toString(dump.total()),
+				metric(off.reloadMs()), Integer.toString(off.frames().samples()), metric(off.frames().medianMs()),
+				metric(off.frames().p95Ms()), metric(off.frames().p99Ms()), tsvPath(off.image()),
+				tsv(off.irisError()), Boolean.toString(off.packInUse()), tsv(off.error()), metric(restored.reloadMs()), tsvPath(restored.image()),
+				tsv(restored.irisError()), Boolean.toString(restored.packInUse()), tsv(restored.error()), Boolean.toString(toon.detected()),
+				Integer.toString(toon.signalPixels()), Integer.toString(toon.centeredPixels()), tsv(toon.bounds()), tsv(error));
+		}
 	}
 
 	private static void putFloats(ByteBuffer buffer, float... values) {

@@ -6,7 +6,7 @@ Minecraft 26.2 Fabric 클라이언트에서 MCglTF로 로컬 VRM 0.x/1.0 모델�
 
 - Fabric Loader 0.19.3+
 - Fabric API 0.156.0+26.2
-- [MCglTF 26.2-Fabric-2.3.2.0](https://github.com/westernbear/MCglTF-1.20.4/releases)
+- [MCglTF 26.2-Fabric-2.3.2.1](https://github.com/westernbear/MCglTF-1.20.4/releases)
 - Iris 1.11.2+와 Iris가 요구하는 Sodium 0.9.x
 - [OneConfig 1.1.6 for Fabric 26.2](https://modrinth.com/mod/oneconfig/version/UCFu181L)와 OneConfig가 요구하는 Compose Multiplatform, Fabric Language Kotlin
 
@@ -35,9 +35,9 @@ Minecraft 26.2 Fabric 클라이언트에서 MCglTF로 로컬 VRM 0.x/1.0 모델�
 
 Celerant는 ShaderPack ZIP이나 GLSL 원본을 수정·저장·재배포하지 않습니다. Iris의 GLSL 변환이 끝난 런타임 문자열에 `celerant_` 심볼만 주입하며, 지원하지 않는 stage 구성이나 앵커를 만나면 원본 결과를 그대로 사용합니다. 카툰 수학은 특정 게임 또는 ShaderPack 코드를 복사하지 않은 일반적인 ramp, headroom 제한 rim, 명암 경계 기법입니다.
 
-현재 런타임 패치는 Iris의 표준 vertex+fragment entity 프로그램 중 단일 색상 attachment를 쓰는 팩을 대상으로 합니다. geometry/tessellation stage 또는 여러 G-buffer attachment를 쓰는 deferred 팩은 데이터 계약을 훼손하지 않도록 패치하지 않습니다.
+현재 런타임 패치는 Iris의 표준 vertex+fragment entity 프로그램을 대상으로 합니다. 단일 색상 attachment는 일반 경로로 처리하고, 다중 G-buffer는 정확한 배포 ZIP과 출력 codec을 검증한 팩만 처리합니다. 그 외 geometry/tessellation stage 또는 알 수 없는 attachment 계약은 데이터 계약을 훼손하지 않도록 원본 그대로 둡니다.
 
-MCglTF 2.3.2.0+는 VRM 0.x의 재질별 MToon base/shade texture와 shade color를 전용 managed pass로 처리합니다. Celerant의 Iris 보정은 이 pass를 건드리지 않고, 지원되는 일반 entity pass에만 제한적으로 적용합니다.
+MCglTF 2.3.2.1+는 VRM 0.x의 재질별 MToon base/shade texture와 shade color를 전용 managed pass로 처리합니다. Iris ShaderPack이 활성화되면 MCglTF는 표준 entity pass로 전환해 pack의 G-buffer 계약과 Celerant의 marker-only 보정에 참여합니다.
 
 VRM 모델과 사용자가 설치한 ShaderPack의 라이선스·이용 조건은 각각 사용자가 확인해야 합니다.
 
@@ -63,6 +63,18 @@ xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runClientGameTest --offline
 ```
 
 비교 이미지는 `build/run/clientGameTest/screenshots/`에 남고 모델은 테스트 종료 후 삭제됩니다. 로컬 VRM/툰 이미지는 배포물에 포함하지 않으며, 합성 OneConfig 화면 증거 2장만 main/PR CI artifact로 업로드합니다.
+
+### ShaderPack 매트릭스
+
+아래 명령은 ZIP을 임시 복사해 원본 SHA-256 보존, toon ON/OFF/복구 캡처, 생성 GLSL marker 수와 12-frame 중앙값·p95·p99을 `celerant-shaderpack-matrix.tsv`로 기록합니다. 실제 GPU에서 실행해야 성능 수치를 판단할 수 있습니다.
+
+```bash
+CELERANT_SHADERPACK_DIR=/absolute/path/to/shaderpack-zips \
+CELERANT_VISUAL_VRM=/absolute/path/model.vrm \
+xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runClientGameTest --offline
+```
+
+2026-08-08 기준 Iris 1.11.2 / MCglTF 2.3.2.1에서 Jingburger VRM의 ON/OFF 시각 신호와 GLSL patch를 확인한 팩은 Complementary Reimagined·Unbound, BSL, Solas, Bliss, MakeUp Ultra Fast, Mellow, AstraLex, Miniature, I Like Vanilla, E-Lite, BVS, Sildur's Vibrant, Lethal, Sildur's Enhanced Default입니다. RedHat과 Trailer는 llvmpipe VRAM 부족으로 pipeline을 만들지 못했으며, Noble은 Iris 1.11.2의 `RENDER_SCALE` directive parse 오류, RenderPearl·Clarity·Alpha Piscium은 이 Iris 버전에서 pipeline 비활성으로 기록됐습니다. 이 다섯 팩은 지원으로 표시하지 않습니다.
 
 ## CI와 릴리스
 
