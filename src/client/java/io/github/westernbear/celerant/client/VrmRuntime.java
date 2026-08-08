@@ -615,7 +615,7 @@ public final class VrmRuntime {
 		JsonObject rawOffset = nodeIndexed ? null : object(firstPerson, "firstPersonBoneOffset");
 		if (rawOffset != null) {
 			float[] parsed = {
-				decimal(rawOffset, "x", 0.0F), decimal(rawOffset, "y", 0.0F), decimal(rawOffset, "z", 0.0F)
+				decimal(rawOffset, "x", 0.0F), decimal(rawOffset, "y", 0.0F), -decimal(rawOffset, "z", 0.0F)
 			};
 			if (!finite(parsed)) {
 				throw new IOException("VRM first-person bone offset is not finite");
@@ -1041,6 +1041,7 @@ public final class VrmRuntime {
 		require(humanoid.get("hips") == 1 && humanoid.get("head") == 2, "VRM1 humanoid bones");
 		require(!vrm0View.nodeIndexed() && vrm0View.firstPersonBone() == 2
 			&& Math.abs(vrm0View.offset()[1] - 0.2F) < 1.0E-6F
+			&& Math.abs(vrm0View.offset()[2] + 0.3F) < 1.0E-6F
 			&& vrm0View.annotations().get(4) == ViewType.THIRD_PERSON_ONLY,
 			"VRM0 first-person mesh annotation");
 		require(vrm1View.nodeIndexed() && vrm1View.annotations().get(3) == ViewType.FIRST_PERSON_ONLY,
@@ -1055,6 +1056,7 @@ public final class VrmRuntime {
 		require(Math.abs(rotatedAnchor[0] - 1.0F) < 1.0E-5F
 			&& Math.abs(rotatedAnchor[1] - 3.0F) < 1.0E-5F,
 			"first-person anchor follows the current bone transform");
+		VrmRig.selfCheck();
 	}
 
 	public static void main(String[] args) throws IOException {

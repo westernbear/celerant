@@ -20,13 +20,13 @@
     "semantic_hash": ""
   },
   "src/client/java/io/github/westernbear/celerant/client/iris/IrisToonPatcher.java": {
-    "mtime": 1785915043.8196075,
-    "ast_hash": "6ae69e5616dc13d7a9384fcd2bc76e65",
+    "mtime": 1786153640.6071823,
+    "ast_hash": "2b04559bd98400e831b388ce7080aa00",
     "semantic_hash": ""
   },
   "src/client/java/io/github/westernbear/celerant/client/mixin/IrisTransformPatcherMixin.java": {
-    "mtime": 1785909620.5121722,
-    "ast_hash": "754e462bab30906adc6350a01e37824b",
+    "mtime": 1786151007.0784602,
+    "ast_hash": "1242339cef3695eb49169443cd4c5f42",
     "semantic_hash": ""
   },
   "src/client/resources/celerant.client.mixins.json": {
@@ -55,8 +55,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1786148018.981794,
-    "ast_hash": "542a625066daa2c391ee60b317280d39",
+    "mtime": 1786154357.8356946,
+    "ast_hash": "f080c7babba2be2a433c6734c348d801",
     "semantic_hash": ""
   },
   "src/main/resources/assets/celerant/icon.png": {
@@ -70,13 +70,13 @@
     "semantic_hash": ""
   },
   "src/client/java/io/github/westernbear/celerant/client/VrmRuntime.java": {
-    "mtime": 1786149420.1238682,
-    "ast_hash": "0cc5798befba19ab87761032fbfb5ed6",
+    "mtime": 1786154176.1806884,
+    "ast_hash": "14901aa7720946a202025e18477fba06",
     "semantic_hash": ""
   },
   "src/gametest/java/io/github/westernbear/celerant/client/CelerantClientGameTest.java": {
-    "mtime": 1786148710.953333,
-    "ast_hash": "d802c90f33bd8eae8ac539f44cca55d4",
+    "mtime": 1786154326.9299922,
+    "ast_hash": "15098f31782d9ee4f451368abfdc3967",
     "semantic_hash": ""
   },
   "src/gametest/resources/fabric.mod.json": {
@@ -95,8 +95,8 @@
     "semantic_hash": ""
   },
   "src/client/java/io/github/westernbear/celerant/client/VrmRig.java": {
-    "mtime": 1786147456.068148,
-    "ast_hash": "b145cf7414692d168cded75f42262d5c",
+    "mtime": 1786154295.4702594,
+    "ast_hash": "7ccfce1ea1bd0560dbf9b484369d04a9",
     "semantic_hash": ""
   },
   "src/client/java/io/github/westernbear/celerant/client/mixin/AvatarRendererMixin.java": {
@@ -112,6 +112,11 @@
   "src/client/java/io/github/westernbear/celerant/client/mixin/AvatarRendererAccessor.java": {
     "mtime": 1786147433.6710043,
     "ast_hash": "0f463c39ec35bce77d6e2f77fdc76b79",
+    "semantic_hash": ""
+  },
+  "CHANGELOG.md": {
+    "mtime": 1786154357.8376946,
+    "ast_hash": "0fe6508f2adaa86d0bc811d51be61698",
     "semantic_hash": ""
   }
 }

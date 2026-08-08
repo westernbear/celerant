@@ -19,17 +19,19 @@ MCglTF와 Iris는 Celerant JAR에 포함하지 않습니다. Gradle은 MCglTF �
 4. 로컬 플레이어를 교체하려면 `/celerant vrm avatar true`를 실행합니다. `/celerant vrm avatar false`로 해제합니다.
 5. `/celerant vrm info` 또는 `/celerant vrm unload`를 사용합니다.
 
-로더는 디렉터리 탈출, 심볼릭 링크 탈출, 256 MiB 초과 파일, 외부 참조가 필요한 glTF를 거부합니다.
+로더는 디렉터리 탈출, 심볼릭 링크 탈출, 256 MiB 초과 파일, 외부 참조가 필요한 glTF를 거부합니다. Humanoid node의 glTF matrix는 손실 없이 TRS로 분해되는 경우 지원하며, shear·특이행렬처럼 안전하게 애니메이션할 수 없는 변환은 거부합니다.
 
 아바타 모드는 1인칭과 3인칭에서 같은 VRM을 사용합니다. VRM first-person annotation으로 머리 메시를 가리고, Minecraft `PlayerModel`의 시선·대기·걷기/달리기·공격/아이템·웅크리기·탑승·수영·겉날개 자세를 humanoid rig에 매 프레임 전달합니다. 일반 점프는 실제 수직 속도에 따라 상승과 하강 관절 포즈를 따로 합성합니다. 최소 `hips`, `spine`, `head`, 양쪽 upper/lower arm·hand, upper/lower leg·foot 15개 관절과 올바른 부모 계층이 필요합니다.
 
-유효한 비영점 VRM0 `firstPersonBoneOffset`은 1인칭 카메라 anchor로 사용하며, 0 또는 누락 값은 Minecraft 눈 위치로 안전하게 폴백합니다.
+리타게팅은 [pixiv/three-vrm의 normalized humanoid 설계](https://github.com/pixiv/three-vrm/blob/cbd9a77a0d17f0099fdac5dcc2b4c7ee30342869/packages/three-vrm-core/src/humanoid/VRMHumanoidRig.ts)를 기준으로 Java/JOML에서 독립 구현했습니다. 애니메이션 delta를 각 bone의 부모 rest 좌표계로 변환한 뒤 원본 rest pose에 합성하고, hips 이동도 부모 월드 변환의 역행렬을 거쳐 적용하므로 bone roll·회전/스케일된 부모를 보존합니다.
+
+유효한 비영점 VRM0 `firstPersonBoneOffset`은 VRM0의 Z축을 glTF 좌표로 변환해 1인칭 카메라 anchor로 사용하며, 0 또는 누락 값은 Minecraft 눈 위치로 안전하게 폴백합니다.
 
 현재 교체 대상은 로컬 플레이어입니다. 다른 플레이어의 VRM 네트워크 동기화, IK/VR 트래커, spring-bone 물리는 포함하지 않습니다. vanilla 장비·손 아이템·망토·겉날개 렌더 레이어도 중복 메시를 피하기 위해 아바타 모드에서 숨기지만 해당 자세는 VRM rig에 반영됩니다.
 
 ## ShaderPack 경계
 
-Celerant는 ShaderPack ZIP이나 GLSL 원본을 수정·저장·재배포하지 않습니다. Iris의 GLSL 변환이 끝난 런타임 문자열에 `celerant_` 심볼만 주입하며, 지원하지 않는 stage 구성이나 앵커를 만나면 원본 결과를 그대로 사용합니다. 카툰 수학은 특정 게임 또는 ShaderPack 코드를 복사하지 않은 일반적인 ramp, rim, specular-band 기법입니다.
+Celerant는 ShaderPack ZIP이나 GLSL 원본을 수정·저장·재배포하지 않습니다. Iris의 GLSL 변환이 끝난 런타임 문자열에 `celerant_` 심볼만 주입하며, 지원하지 않는 stage 구성이나 앵커를 만나면 원본 결과를 그대로 사용합니다. 카툰 수학은 특정 게임 또는 ShaderPack 코드를 복사하지 않은 일반적인 ramp, headroom 제한 rim, 명암 경계 기법입니다.
 
 현재 런타임 패치는 Iris의 표준 vertex+fragment entity 프로그램 중 단일 색상 attachment를 쓰는 팩을 대상으로 합니다. geometry/tessellation stage 또는 여러 G-buffer attachment를 쓰는 deferred 팩은 데이터 계약을 훼손하지 않도록 패치하지 않습니다.
 
@@ -41,15 +43,15 @@ Celerant는 Iris에 포함된 AGPL-3.0 `glsl-transformer` API를 직접 사용�
 
 ## 테스트
 
-Linux에서 실제 Fabric 클라이언트, Iris, Sodium을 llvmpipe로 실행해 전체 사용자 흐름을 검증합니다.
+Linux에서 실제 Fabric 클라이언트, Iris, Sodium을 llvmpipe로 실행해 전체 사용자 흐름을 검증합니다. Client GameTest는 Iris가 실제 `entities_*` 프로그램용으로 생성한 GLSL에 `celerant_` marker/ramp/normal이 있는지 확인하고, 고정된 카메라에서 같은 VRM을 패치 ON/OFF/복구 ON으로 렌더링합니다. 두 ON 프레임에 공통으로 안정된 모델 픽셀 중 50% 이상이 OFF에서만 변해야 통과합니다.
 
 ```bash
 xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runClientGameTest --offline
 ```
 
-테스트용 VRM과 ShaderPack은 실행 디렉터리에 동적으로 생성되며 배포 JAR에는 포함되지 않습니다.
+테스트용 VRM과 ShaderPack은 실행 디렉터리에 동적으로 생성되며 배포 JAR에는 포함되지 않습니다. 변환된 GLSL 덤프도 이 테스트 ShaderPack에 대해서만 `build/run/clientGameTest/patched_shaders/`에 생성됩니다.
 
-로컬 VRM의 햇빛 카툰 렌더링은 환경변수로 모델을 지정해 아침(0), 정오(6000), 해질녘(12500), 밤(18000) 네 시각의 전·후면, 1인칭, 보행과 점프 상승/하강 관절 프레임을 1280×720으로 캡처할 수 있습니다.
+로컬 VRM의 햇빛 카툰 렌더링은 환경변수로 모델을 지정해 정오 근접 ON/OFF/복구 ON 픽셀 단언과 함께 아침(0), 정오(6000), 해질녘(12500), 밤(18000) 네 시각의 전·후면, 1인칭, 보행과 점프 상승/하강 관절 프레임을 1280×720으로 캡처합니다. 이 경로는 저작권이 있는 모델을 CI에 포함하지 않으면서 실제 재질과 스타일을 로컬 승인하기 위한 것이며, 위의 합성 VRM CI 단언을 대체하지 않습니다.
 
 ```bash
 CELERANT_VISUAL_VRM=/absolute/path/model.vrm \
@@ -63,7 +65,7 @@ xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runClientGameTest --offline
 main 브랜치와 pull request는 Gradle 빌드 및 실제 Xvfb 클라이언트 게임 테스트를 실행합니다. 새 GitHub Release는 깨끗하고 원격과 동기화된 main 브랜치에서 다음 명령으로 생성합니다.
 
 ```bash
-./scripts/release.sh 1.0.1
+./scripts/release.sh 1.1.1
 ```
 
 스크립트가 버전 변경, 빌드, 커밋, 주석 태그와 main의 원자적 push를 수행합니다. `v*` 태그의 Release workflow가 클라이언트 게임 테스트를 다시 통과한 뒤 모드 JAR과 SHA-256 체크섬을 게시합니다.

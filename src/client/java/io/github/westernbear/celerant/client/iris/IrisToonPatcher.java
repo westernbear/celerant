@@ -39,6 +39,9 @@ public final class IrisToonPatcher {
 			Parameters parameters,
 			Map<PatchShaderType, String> transformed
 	) {
+		if (Boolean.getBoolean("celerant.testing.disableToonPatch")) {
+			return transformed;
+		}
 		if (!isEntityProgram(name) || parameters == null || parameters.patch != Patch.VANILLA || transformed == null) {
 			return transformed;
 		}
@@ -165,18 +168,16 @@ public final class IrisToonPatcher {
 				        : normalize(vec3(0.35, 0.80, 0.48));
 				    vec3 celerant_vrm_v = vec3(0.0, 0.0, 1.0);
 				    float celerant_vrm_ndl = max(dot(celerant_vrm_n, celerant_vrm_l), 0.0);
-				    float celerant_vrm_ramp = celerant_vrm_ndl < 0.32 ? 0.62 : (celerant_vrm_ndl < 0.68 ? 0.82 : 1.0);
-				    float celerant_vrm_fresnel = pow(1.0 - max(dot(celerant_vrm_n, celerant_vrm_v), 0.0), 3.0);
-				    vec3 celerant_vrm_h = normalize(celerant_vrm_l + celerant_vrm_v);
-				    float celerant_vrm_spec = step(0.965, max(dot(celerant_vrm_n, celerant_vrm_h), 0.0));
-				    float celerant_vrm_edge_signal = fwidth(celerant_vrm_ndl)
-				        + 0.25 * length(fwidth(celerant_vrm_rgb)) / (0.25 + length(celerant_vrm_rgb));
-				    float celerant_vrm_edge = smoothstep(0.045, 0.16, celerant_vrm_edge_signal);
+				    float celerant_vrm_ramp = celerant_vrm_ndl < 0.32 ? 0.70 : (celerant_vrm_ndl < 0.68 ? 0.84 : 0.94);
+				    float celerant_vrm_nv = clamp(abs(dot(celerant_vrm_n, celerant_vrm_v)), 0.0, 1.0);
+				    float celerant_vrm_fresnel = pow(1.0 - celerant_vrm_nv, 3.0);
+				    float celerant_vrm_edge = smoothstep(0.10, 0.24, fwidth(celerant_vrm_ndl));
 				    if (celerant_vrm_toon_marker != 0) {
 				        vec3 celerant_vrm_lit = celerant_vrm_rgb * celerant_vrm_ramp;
-				        celerant_vrm_lit += celerant_vrm_rgb * (0.16 * celerant_vrm_fresnel);
-				        celerant_vrm_lit += vec3(0.10 * celerant_vrm_spec);
-				        iris_FragData0.rgb = mix(celerant_vrm_lit, celerant_vrm_lit * 0.52, celerant_vrm_edge);
+				        vec3 celerant_vrm_headroom = max(vec3(1.0) - celerant_vrm_lit, vec3(0.0));
+				        celerant_vrm_lit += min(max(celerant_vrm_rgb, vec3(0.0)) * (0.05 * celerant_vrm_fresnel),
+				            celerant_vrm_headroom);
+				        iris_FragData0.rgb = mix(celerant_vrm_lit, celerant_vrm_lit * 0.74, celerant_vrm_edge);
 				    }
 				}
 				""";
@@ -192,10 +193,8 @@ public final class IrisToonPatcher {
 				    vec3 celerant_vrm_toon_rgb = celerant_vrm_luma > 0.0001
 				        ? celerant_vrm_rgb * (celerant_vrm_quantized_luma / celerant_vrm_luma)
 				        : celerant_vrm_rgb;
-				    float celerant_vrm_edge_signal = length(fwidth(celerant_vrm_rgb)) / (0.25 + length(celerant_vrm_rgb));
-				    float celerant_vrm_edge = smoothstep(0.04, 0.18, celerant_vrm_edge_signal);
 				    if (celerant_vrm_toon_marker != 0) {
-				        iris_FragData0.rgb = mix(celerant_vrm_toon_rgb, celerant_vrm_toon_rgb * 0.52, celerant_vrm_edge);
+				        iris_FragData0.rgb = celerant_vrm_toon_rgb;
 				    }
 				}
 				""";
@@ -209,8 +208,9 @@ public final class IrisToonPatcher {
 		String fallbackFragment = patchFragment(fragment, false);
 		assert patchedVertex.contains(MARKER_VARYING) && patchedVertex.contains(NORMAL_VARYING)
 				&& patchedFragment.contains("celerant_vrm_ramp") && patchedFragment.contains("shadowLightPosition")
-				&& patchedFragment.contains("fwidth")
+				&& patchedFragment.contains("celerant_vrm_headroom") && !patchedFragment.contains("celerant_vrm_spec")
 				&& fallbackFragment.contains("celerant_vrm_quantized_luma")
+				&& !fallbackFragment.contains("celerant_vrm_edge_signal")
 				&& NON_PRIMARY_FRAGMENT_OUTPUT.matcher("iris_FragData1 = vec4(0.0);").find()
 				: "glsl-transformer toon patch self-check failed";
 	}
