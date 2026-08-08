@@ -1,18 +1,25 @@
 package io.github.westernbear.celerant.client;
 
+import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
+import javax.imageio.ImageIO;
+
+import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.NativeImage;
 
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -21,6 +28,8 @@ import net.fabricmc.fabric.api.client.gametest.v1.TestInput;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestServerConnection;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
+import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
+import net.fabricmc.loader.api.FabricLoader;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.gl.blending.AlphaTest;
 import net.irisshaders.iris.gl.state.ShaderAttributeInputs;
@@ -33,12 +42,17 @@ import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.multiplayer.chat.GuiMessage;
 import net.minecraft.core.BlockPos;
 
+import org.polyfrost.oneconfig.api.notifications.v1.NotificationType;
+import org.polyfrost.oneconfig.api.notifications.v1.NotificationsManager;
 import org.lwjgl.glfw.GLFW;
-
 public final class CelerantClientGameTest implements FabricClientGameTest {
 	private static final String PACK_NAME = "CelerantTest";
+	private static final String ONECONFIG_SCREEN =
+		"org.polyfrost.oneconfig.internal.ui.compose.impls.OneConfigUIScreen";
 	private static final String LOCAL_VISUAL_VRM = "_local_visual.vrm";
 	private static final String DISABLE_TOON_PATCH_PROPERTY = "celerant.testing.disableToonPatch";
+	private static volatile Path nextOneConfigFileSelection;
+	private static volatile FileDialogRequest lastOneConfigFileDialog;
 	private static final String VERTEX_SHADER = """
 		#version 120
 		varying vec2 texcoord;
@@ -92,6 +106,7 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 				&& Iris.getPipelineManager().getPipeline().isPresent()
 				&& Iris.getStoredError().isEmpty(), 1200);
 
+			testOneConfigFlow(context, modelPath);
 			testFailureFlow(context);
 			testUserFlow(context, world, connection, gameDirectory);
 			if (localVisualTest) {
@@ -107,6 +122,541 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 			} catch (IOException exception) {
 				throw new AssertionError("could not remove the local visual VRM copy", exception);
 			}
+		}
+	}
+
+	private static void testOneConfigFlow(ClientGameTestContext context, Path modelPath) {
+		verifyOneConfigMetadata();
+		resetUiOption(context, "modelPath", "");
+		resetUiOption(context, "scale", 1.0F);
+		resetUiOption(context, "avatarEnabled", false);
+		resetUiOption(context, "expressionName", "");
+		resetUiOption(context, "expressionWeight", 1.0F);
+		resetUiOption(context, "toonEnabled", true);
+		context.runOnClient(client -> {
+			var key = CelerantClient.uiKey();
+			require(key.getDefaultKey().equals(InputConstants.Type.KEYSYM.getOrCreate(InputConstants.KEY_V)),
+				"Celerant UI key default must be V");
+			require(!key.isUnbound() && !KeyMappingHelper.getBoundKeyOf(key).equals(InputConstants.UNKNOWN),
+				"Celerant UI key must survive Client GameTest option restore");
+			require(Arrays.asList(client.options.keyMappings).contains(key),
+				"Celerant UI key must be registered in vanilla Controls");
+		});
+
+		Object pipeline = context.computeOnClient(client -> Iris.getPipelineManager().getPipeline().orElseThrow());
+		clearNotifications(context);
+		context.waitTicks(5);
+		BufferedImage worldFrame = capturePresentedWindow(context, "celerant-oneconfig-world-os");
+		context.getInput().pressKey(CelerantClient.uiKey());
+		context.waitFor(client -> client.gui.screen() != null
+			&& ONECONFIG_SCREEN.equals(client.gui.screen().getClass().getName()), 400);
+		Object firstScreen = context.computeOnClient(client -> client.gui.screen());
+		context.waitTicks(20);
+		assertCelerantOneConfigRoute(context);
+		assertUiText(context, "Local VRM avatar");
+		assertOneConfigPresented(worldFrame,
+			capturePresentedWindow(context, "celerant-oneconfig-control-center-os"));
+
+		clearNotifications(context);
+		clickUiRowControl(context, "Load selected VRM", "OnClick :");
+		require(!context.computeOnClient(client -> VrmRuntime.getInstance().isLoading()),
+			"blank OneConfig model path must not start loading");
+		waitForNotification(context, "Choose a .vrm file first", NotificationType.ERROR);
+
+		Path invalidModel = modelPath.resolveSibling("not-a-vrm.txt").toAbsolutePath();
+		selectOneConfigFile(context, invalidModel);
+		FileDialogRequest dialog = lastOneConfigFileDialog;
+		require(dialog != null && "VRM model".equals(dialog.title())
+			&& dialog.defaultPath() == null
+			&& "VRM models".equals(dialog.filterName()) && dialog.patterns().equals(List.of("*.vrm")),
+			"OneConfig must open its native picker with the VRM-only filter");
+		clearNotifications(context);
+		clickUiRowControl(context, "Load selected VRM", "OnClick :");
+		context.waitFor(client -> !VrmRuntime.getInstance().isLoading(), 200);
+		require(!context.computeOnClient(client -> VrmRuntime.getInstance().isLoaded()),
+			"invalid OneConfig model path must not install a model");
+		waitForNotification(context, ".vrm", NotificationType.ERROR);
+
+		selectOneConfigFile(context, modelPath.toAbsolutePath());
+		clearNotifications(context);
+		clickUiRowControl(context, "Load selected VRM", "OnClick :");
+		context.waitFor(client -> !VrmRuntime.getInstance().isLoading()
+			&& VrmRuntime.getInstance().info().contains("VRM: minimal.vrm"), 1200);
+		waitForNotification(context, "Loaded minimal.vrm", NotificationType.SUCCESS);
+
+		replaceUiText(context, "Model scale", 1, "2");
+		context.waitFor(client -> Float.valueOf(2.0F).equals(
+			CelerantConfig.INSTANCE.getTree().getProp("scale").get()), 200);
+		assertInfoContains(context, "scale 2.000");
+		clearNotifications(context);
+		clickUiRowControl(context, "Place preview here", "OnClick :");
+		assertInfoContains(context, "position ");
+		waitForNotification(context, "Preview moved", NotificationType.SUCCESS);
+
+		clickUiCategory(context, "Expressions");
+		replaceUiText(context, "Expression name", 0, "smile");
+		context.waitFor(client -> "smile".equals(
+			CelerantConfig.INSTANCE.getTree().getProp("expressionName").get()), 200);
+		clickUiSlider(context, "Expression weight", 0.25F);
+		context.waitTicks(5);
+		float sliderValue = context.computeOnClient(client ->
+			(Float) CelerantConfig.INSTANCE.getTree().getProp("expressionWeight").get());
+		require(Math.abs(sliderValue - 0.25F) < 0.01F,
+			"OneConfig slider pointer input must set 0.25, got " + sliderValue);
+		clearNotifications(context);
+		clickUiRowControl(context, "Apply expression", "OnClick :");
+		assertInfoContains(context, "expression smile 0.25");
+		waitForNotification(context, "Expression applied", NotificationType.SUCCESS);
+		replaceUiText(context, "Expression name", 5, "missing");
+		clearNotifications(context);
+		clickUiRowControl(context, "Apply expression", "OnClick :");
+		assertInfoContains(context, "expression smile 0.25");
+		waitForNotification(context, "Unknown expression", NotificationType.ERROR);
+		clearNotifications(context);
+		clickUiRowControl(context, "Available expressions", "OnClick :");
+		waitForNotification(context, "smile, blink", NotificationType.INFO);
+		clearNotifications(context);
+		clickUiRowControl(context, "Clear expression", "OnClick :");
+		assertInfoContains(context, "expression none");
+		waitForNotification(context, "Expression cleared", NotificationType.SUCCESS);
+
+		clearNotifications(context);
+		clickUiCategory(context, "Avatar");
+		clickUiRowControl(context, "Replace local player", "OnClick :");
+		context.waitFor(client -> VrmRuntime.getInstance().isLocalAvatarActive()
+			&& Boolean.TRUE.equals(CelerantConfig.INSTANCE.getTree().getProp("avatarEnabled").get()), 200);
+		clickUiRowControl(context, "Replace local player", "OnClick :");
+		context.waitFor(client -> !VrmRuntime.getInstance().isLocalAvatarActive()
+			&& Boolean.FALSE.equals(CelerantConfig.INSTANCE.getTree().getProp("avatarEnabled").get()), 200);
+
+		context.getInput().pressKey(GLFW.GLFW_KEY_ESCAPE);
+		context.waitFor(client -> client.gui.screen() == null, 400);
+		context.waitTicks(3);
+		context.getInput().pressKey(CelerantClient.uiKey());
+		waitForOneConfigScreen(context);
+		require(context.computeOnClient(client -> client.gui.screen()) != firstScreen,
+			"reopening Celerant must create a fresh OneConfig screen");
+		assertCelerantOneConfigRoute(context);
+		clickUiCategory(context, "Model");
+		require(Float.valueOf(2.0F).equals(context.computeOnClient(client ->
+			CelerantConfig.INSTANCE.getTree().getProp("scale").get())),
+			"OneConfig values must survive closing and reopening the screen");
+		require(context.computeOnClient(client -> rowControlConfig(client, "Model scale", "SetText :"))
+			.contains("InputText : 2"), "reopened OneConfig must display the persisted scale");
+		context.getInput().pressKey(GLFW.GLFW_KEY_ESCAPE);
+		context.waitFor(client -> client.gui.screen() == null, 400);
+		require(context.computeOnClient(client -> Iris.getPipelineManager().getPipeline().orElseThrow()) == pipeline,
+			"opening and closing OneConfig must preserve the active Iris pipeline");
+		require(context.computeOnClient(client -> Iris.isPackInUseQuick() && Iris.getStoredError().isEmpty()),
+			"OneConfig rendering must leave Iris healthy");
+
+		context.waitTicks(3);
+		context.getInput().pressKey(CelerantClient.uiKey());
+		waitForOneConfigScreen(context);
+		clickUiCategory(context, "Rendering");
+		clickUiRowControl(context, "Iris toon shading", "OnClick :");
+		context.waitFor(client -> !io.github.westernbear.celerant.client.iris.IrisToonPatcher.isEnabled()
+			&& Boolean.FALSE.equals(CelerantConfig.INSTANCE.getTree().getProp("toonEnabled").get())
+			&& Iris.getPipelineManager().getPipeline().isPresent() && Iris.getStoredError().isEmpty(), 1200);
+		waitForOneConfigScreen(context);
+		clickUiRowControl(context, "Iris toon shading", "OnClick :");
+		context.waitFor(client -> io.github.westernbear.celerant.client.iris.IrisToonPatcher.isEnabled()
+			&& Boolean.TRUE.equals(CelerantConfig.INSTANCE.getTree().getProp("toonEnabled").get())
+			&& Iris.getPipelineManager().getPipeline().isPresent() && Iris.getStoredError().isEmpty(), 1200);
+
+		waitForOneConfigScreen(context);
+		clickUiCategory(context, "Interface");
+		clearNotifications(context);
+		clickUiRowControl(context, "Runtime status", "OnClick :");
+		waitForNotification(context, "VRM: minimal.vrm", NotificationType.INFO);
+
+		clickUiCategory(context, "Model");
+		clearNotifications(context);
+		clickUiRowControl(context, "Unload VRM", "OnClick :");
+		context.waitFor(client -> "VRM: not loaded".equals(VrmRuntime.getInstance().info()), 200);
+		waitForNotification(context, "VRM unloaded", NotificationType.SUCCESS);
+		clearNotifications(context);
+		clickUiRowControl(context, "Unload VRM", "OnClick :");
+		waitForNotification(context, "No VRM is loaded", NotificationType.ERROR);
+
+		clickUiCategory(context, "Avatar");
+		clearNotifications(context);
+		clickUiRowControl(context, "Replace local player", "OnClick :");
+		context.waitFor(client -> Boolean.FALSE.equals(
+			CelerantConfig.INSTANCE.getTree().getProp("avatarEnabled").get()), 200);
+		waitForNotification(context, "Cannot enable avatar", NotificationType.ERROR);
+		context.getInput().pressKey(GLFW.GLFW_KEY_ESCAPE);
+		context.waitFor(client -> client.gui.screen() == null, 400);
+	}
+
+	private static void verifyOneConfigMetadata() {
+		try {
+			String version = FabricLoader.getInstance().getModContainer("oneconfigbootstrap").orElseThrow()
+				.getMetadata().getVersion().getFriendlyString();
+			require("1.1.6".equals(version), "Celerant must run against OneConfig 1.1.6, got " + version);
+			var file = CelerantConfig.class.getDeclaredField("modelPath")
+				.getAnnotation(org.polyfrost.oneconfig.api.config.v1.annotations.File.class);
+			require(file != null && Arrays.asList(file.types()).contains(".vrm"),
+				"OneConfig model picker must filter for .vrm files");
+			require("celerant".equals(CelerantConfig.INSTANCE.getTree().getID()),
+				"OneConfig tree id must match the Celerant mod id");
+		} catch (ReflectiveOperationException exception) {
+			throw new AssertionError("could not inspect the OneConfig model picker", exception);
+		}
+	}
+
+	private static void resetUiOption(ClientGameTestContext context, String name, Object value) {
+		context.runOnClient(client -> {
+			var property = CelerantConfig.INSTANCE.getTree().getProp(name);
+			require(property != null, "missing OneConfig option: " + name);
+			property.setAs(value);
+			require(java.util.Objects.equals(property.get(), value), "OneConfig rejected option: " + name);
+		});
+	}
+
+	public static Path takeOneConfigFileSelection(String title, String defaultPath, String[] patterns,
+		String filterName) {
+		Path selected = nextOneConfigFileSelection;
+		require(selected != null, "OneConfig opened an unexpected native file dialog during Client GameTest");
+		lastOneConfigFileDialog = new FileDialogRequest(title, defaultPath,
+			List.copyOf(Arrays.asList(patterns)), filterName);
+		nextOneConfigFileSelection = null;
+		return selected;
+	}
+
+	private static void selectOneConfigFile(ClientGameTestContext context, Path selected) {
+		lastOneConfigFileDialog = null;
+		nextOneConfigFileSelection = selected;
+		clickUiRowControl(context, "VRM model", "OnClick :");
+		context.waitFor(client -> lastOneConfigFileDialog != null && selected.toString().equals(
+			CelerantConfig.INSTANCE.getTree().getProp("modelPath").get()), 400);
+	}
+
+	private static void waitForOneConfigScreen(ClientGameTestContext context) {
+		context.waitFor(client -> client.gui.screen() != null
+			&& ONECONFIG_SCREEN.equals(client.gui.screen().getClass().getName())
+			&& isCelerantOneConfigRoute(client) && hasUiText(client, "Model"), 400);
+	}
+
+	private static void clickUiCategory(ClientGameTestContext context, String category) {
+		clickUiBounds(context, context.computeOnClient(client -> findClickableTextBounds(client, category)));
+		String marker = switch (category) {
+			case "Model" -> "VRM model";
+			case "Avatar" -> "Replace local player";
+			case "Expressions" -> "Expression name";
+			case "Rendering" -> "Iris toon shading";
+			case "Interface" -> "Runtime status";
+			default -> throw new AssertionError("unknown OneConfig category: " + category);
+		};
+		context.waitFor(client -> hasUiText(client, marker), 200);
+	}
+
+	private static void clickUiRowControl(ClientGameTestContext context, String title, String semanticKey) {
+		clickUiBounds(context, context.computeOnClient(client -> findRowControlBounds(client, title, semanticKey)));
+		context.waitTicks(3);
+	}
+
+	private static void replaceUiText(ClientGameTestContext context, String title, int oldLength, String value) {
+		clickUiBounds(context, context.computeOnClient(client -> findRowControlBounds(client, title, "SetText :")));
+		context.waitFor(client -> rowControlConfig(client, title, "SetText :").contains("Focused : true"), 100);
+		context.getInput().pressKey(GLFW.GLFW_KEY_END);
+		for (int index = 0; index < oldLength; index++) {
+			context.getInput().pressKey(GLFW.GLFW_KEY_BACKSPACE);
+		}
+		context.getInput().typeChars(value);
+		context.getInput().pressKey(GLFW.GLFW_KEY_ENTER);
+		context.waitTicks(3);
+	}
+
+	private static void clickUiSlider(ClientGameTestContext context, String title, float fraction) {
+		UiPoint point = context.computeOnClient(client -> findSliderPoint(client, title, fraction));
+		context.getInput().setCursorPos(point.x(), point.y());
+		context.waitTicks(1);
+		context.getInput().holdMouse(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+		context.waitTicks(2);
+		context.getInput().releaseMouse(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+		context.waitTicks(2);
+	}
+
+	private static void clickUiBounds(ClientGameTestContext context, UiBounds bounds) {
+		context.getInput().setCursorPos(bounds.centerX(), bounds.centerY());
+		context.waitTicks(1);
+		context.getInput().pressMouse(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+	}
+
+	private static void assertUiText(ClientGameTestContext context, String text) {
+		require(context.computeOnClient(client -> hasUiText(client, text)),
+			"OneConfig screen must expose: " + text);
+	}
+
+	private static void assertCelerantOneConfigRoute(ClientGameTestContext context) {
+		require(context.computeOnClient(CelerantClientGameTest::isCelerantOneConfigRoute),
+			"V must open Celerant's own OneConfig tree");
+	}
+
+	private static boolean isCelerantOneConfigRoute(Minecraft client) {
+		try {
+			return reflectedField(client.gui.screen(), "initialTree") == CelerantConfig.INSTANCE.getTree();
+		} catch (ReflectiveOperationException | NullPointerException ignored) {
+			return false;
+		}
+	}
+
+	private static boolean hasUiText(Minecraft client, String text) {
+		try {
+			return semanticNodes(client).stream().anyMatch(node -> hasExactText(semanticConfig(node), text));
+		} catch (AssertionError | NullPointerException ignored) {
+			return false;
+		}
+	}
+
+	private static BufferedImage capturePresentedWindow(ClientGameTestContext context, String name) {
+		int[] bounds = context.computeOnClient(client -> new int[] {
+			client.getWindow().getX(), client.getWindow().getY(),
+			client.getWindow().getWidth(), client.getWindow().getHeight()
+		});
+		require(bounds[2] > 0 && bounds[3] > 0, "Client window must have a visible size");
+		try {
+			Path output = context.computeOnClient(client -> client.gameDirectory.toPath())
+				.resolve("screenshots").resolve(name + ".png");
+			Files.createDirectories(output.getParent());
+			Path java = Path.of(System.getProperty("java.home"), "bin", "java");
+			Path helperClasses = Path.of(PresentedWindowCapture.class.getProtectionDomain()
+				.getCodeSource().getLocation().toURI());
+			Process process = new ProcessBuilder(java.toString(), "-Djava.awt.headless=false", "-cp",
+				helperClasses.toString(), PresentedWindowCapture.class.getName(),
+				Integer.toString(bounds[0]), Integer.toString(bounds[1]),
+				Integer.toString(bounds[2]), Integer.toString(bounds[3]), output.toString())
+				.inheritIO().start();
+			if (!process.waitFor(10, TimeUnit.SECONDS)) {
+				process.destroyForcibly();
+				throw new AssertionError("presented window capture timed out");
+			}
+			require(process.exitValue() == 0, "presented window capture process must succeed");
+			BufferedImage image = ImageIO.read(output.toFile());
+			require(image != null, "presented window capture must be a PNG");
+			return image;
+		} catch (IOException | URISyntaxException exception) {
+			throw new AssertionError("could not capture the presented OneConfig window", exception);
+		} catch (InterruptedException exception) {
+			Thread.currentThread().interrupt();
+			throw new AssertionError("presented OneConfig capture was interrupted", exception);
+		}
+	}
+
+	private static void assertOneConfigPresented(BufferedImage world, BufferedImage ui) {
+		require(world.getWidth() == ui.getWidth() && world.getHeight() == ui.getHeight(),
+			"presented UI comparison must use the same window size");
+		long changed = 0;
+		long visibleWorld = 0;
+		long visibleUi = 0;
+		long pixels = (long) world.getWidth() * world.getHeight();
+		for (int y = 0; y < world.getHeight(); y++) {
+			for (int x = 0; x < world.getWidth(); x++) {
+				int before = world.getRGB(x, y);
+				int after = ui.getRGB(x, y);
+				int beforeLight = ((before >>> 16) & 255) + ((before >>> 8) & 255) + (before & 255);
+				int afterLight = ((after >>> 16) & 255) + ((after >>> 8) & 255) + (after & 255);
+				if (beforeLight > 24) {
+					visibleWorld++;
+				}
+				if (afterLight > 24) {
+					visibleUi++;
+				}
+				int delta = Math.abs(((before >>> 16) & 255) - ((after >>> 16) & 255))
+					+ Math.abs(((before >>> 8) & 255) - ((after >>> 8) & 255))
+					+ Math.abs((before & 255) - (after & 255));
+				if (delta >= 48) {
+					changed++;
+				}
+			}
+		}
+		require(visibleWorld >= pixels / 2 && visibleUi >= pixels / 2,
+			"X11 must present non-black world and OneConfig frames");
+		require(changed >= pixels * 2 / 5,
+			"OneConfig must visibly change at least 40% of the presented client window");
+	}
+
+	private static UiBounds findClickableTextBounds(Minecraft client, String text) {
+		UiBounds best = null;
+		for (Object node : semanticNodes(client)) {
+			if (!hasExactText(semanticConfig(node), text)) {
+				continue;
+			}
+			for (Object parent = semanticParent(node); parent != null; parent = semanticParent(parent)) {
+				if (semanticConfig(parent).contains("OnClick :")) {
+					UiBounds bounds = semanticBounds(parent);
+					if (best == null || bounds.left() < best.left()) {
+						best = bounds;
+					}
+					break;
+				}
+			}
+		}
+		if (best == null) {
+			throw new AssertionError("missing clickable OneConfig text: " + text);
+		}
+		return best;
+	}
+
+	private static UiBounds findRowControlBounds(Minecraft client, String title, String semanticKey) {
+		Object row = findSettingRow(client, title);
+		UiBounds best = null;
+		for (Object node : descendants(row)) {
+			if (!semanticConfig(node).contains(semanticKey)) {
+				continue;
+			}
+			UiBounds bounds = semanticBounds(node);
+			if (best == null || bounds.left() > best.left()) {
+				best = bounds;
+			}
+		}
+		if (best == null) {
+			throw new AssertionError("missing OneConfig control: " + title + " / " + semanticKey);
+		}
+		return best;
+	}
+
+	private static String rowControlConfig(Minecraft client, String title, String semanticKey) {
+		UiBounds wanted = findRowControlBounds(client, title, semanticKey);
+		return descendants(findSettingRow(client, title)).stream()
+			.filter(node -> semanticConfig(node).contains(semanticKey))
+			.filter(node -> semanticBounds(node).equals(wanted))
+			.map(CelerantClientGameTest::semanticConfig)
+			.findFirst().orElse("");
+	}
+
+	private static UiPoint findSliderPoint(Minecraft client, String title, float fraction) {
+		Object row = findSettingRow(client, title);
+		UiBounds track = descendants(row).stream()
+			.map(CelerantClientGameTest::semanticBounds)
+			.filter(bounds -> bounds.width() > 100.0F && bounds.height() <= 8.0F)
+			.max((left, right) -> Float.compare(left.width(), right.width()))
+			.orElseThrow(() -> new AssertionError("missing OneConfig slider track: " + title));
+		return new UiPoint(track.left() + track.width() * fraction, track.centerY());
+	}
+
+	private static Object findSettingRow(Minecraft client, String title) {
+		for (Object node : semanticNodes(client)) {
+			if (!hasExactText(semanticConfig(node), title)) {
+				continue;
+			}
+			for (Object parent = semanticParent(node); parent != null; parent = semanticParent(parent)) {
+				UiBounds bounds = semanticBounds(parent);
+				if (bounds.left() > 150.0F && bounds.width() > 300.0F
+					&& bounds.height() >= 25.0F && bounds.height() <= 80.0F) {
+					return parent;
+				}
+			}
+		}
+		throw new AssertionError("missing OneConfig setting row: " + title);
+	}
+
+	private static List<Object> semanticNodes(Minecraft client) {
+		try {
+			Object scene = reflectedField(client.gui.screen(), "sceneOrNull");
+			Object owner = reflectedField(scene, "mainOwner");
+			Object semanticsOwner = owner.getClass().getMethod("getSemanticsOwner").invoke(owner);
+			Object root = semanticsOwner.getClass().getMethod("getUnmergedRootSemanticsNode").invoke(semanticsOwner);
+			return descendants(root);
+		} catch (ReflectiveOperationException exception) {
+			throw new AssertionError("could not inspect OneConfig semantics", exception);
+		}
+	}
+
+	private static List<Object> descendants(Object root) {
+		try {
+			List<Object> nodes = new ArrayList<>();
+			nodes.add(root);
+			for (Object child : (List<?>) root.getClass().getMethod("getChildren").invoke(root)) {
+				nodes.addAll(descendants(child));
+			}
+			return nodes;
+		} catch (ReflectiveOperationException exception) {
+			throw new AssertionError("could not traverse OneConfig semantics", exception);
+		}
+	}
+
+	private static Object semanticParent(Object node) {
+		try {
+			return node.getClass().getMethod("getParent").invoke(node);
+		} catch (ReflectiveOperationException exception) {
+			throw new AssertionError("could not traverse OneConfig parent", exception);
+		}
+	}
+
+	private static String semanticConfig(Object node) {
+		try {
+			return node.getClass().getMethod("getConfig").invoke(node).toString();
+		} catch (ReflectiveOperationException exception) {
+			throw new AssertionError("could not inspect OneConfig control", exception);
+		}
+	}
+
+	private static UiBounds semanticBounds(Object node) {
+		try {
+			Object bounds = node.getClass().getMethod("getBoundsInRoot").invoke(node);
+			Class<?> type = bounds.getClass();
+			return new UiBounds(
+				((Number) type.getMethod("getLeft").invoke(bounds)).floatValue(),
+				((Number) type.getMethod("getTop").invoke(bounds)).floatValue(),
+				((Number) type.getMethod("getRight").invoke(bounds)).floatValue(),
+				((Number) type.getMethod("getBottom").invoke(bounds)).floatValue());
+		} catch (ReflectiveOperationException exception) {
+			throw new AssertionError("could not inspect OneConfig bounds", exception);
+		}
+	}
+
+	private static boolean hasExactText(String config, String text) {
+		return config.contains("Text : [" + text + "]");
+	}
+
+	private static Object reflectedField(Object target, String name) throws ReflectiveOperationException {
+		for (Class<?> type = target.getClass(); type != null; type = type.getSuperclass()) {
+			try {
+				Field field = type.getDeclaredField(name);
+				field.setAccessible(true);
+				return field.get(target);
+			} catch (NoSuchFieldException ignored) {
+				// Try the superclass.
+			}
+		}
+		throw new NoSuchFieldException(name);
+	}
+
+	private static void clearNotifications(ClientGameTestContext context) {
+		context.runOnClient(client -> {
+			NotificationsManager.INSTANCE.clearAll();
+			NotificationsManager.INSTANCE.clearHistory();
+		});
+		context.waitTicks(1);
+	}
+
+	private static void waitForNotification(ClientGameTestContext context, String text, NotificationType type) {
+		context.waitFor(client -> NotificationsManager.INSTANCE.getHistory().stream()
+			.anyMatch(notification -> notification.getType() == type
+				&& notification.getMessage().contains(text)), 400);
+	}
+
+	private record FileDialogRequest(String title, String defaultPath, List<String> patterns, String filterName) { }
+
+	private record UiPoint(float x, float y) { }
+
+	private record UiBounds(float left, float top, float right, float bottom) {
+		float width() {
+			return right - left;
+		}
+
+		float height() {
+			return bottom - top;
+		}
+
+		float centerX() {
+			return (left + right) / 2.0F;
+		}
+
+		float centerY() {
+			return (top + bottom) / 2.0F;
 		}
 	}
 
@@ -152,6 +702,8 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		assertInfoContains(context, String.format(Locale.ROOT, "position 0.00 %.2f 0.00", y));
 		sendCommand(context, "celerant vrm scale 2", "VRM scale set to 2.0");
 		assertInfoContains(context, "scale 2.000");
+		context.waitFor(client -> Float.valueOf(2.0F).equals(
+			CelerantConfig.INSTANCE.getTree().getProp("scale").get()), 100);
 
 		teleport(context, world, connection, 0.0, y, 4.0);
 		context.getInput().lookAt(BlockPos.containing(0.0, y + 1.5, 0.0));
@@ -182,6 +734,8 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		sendCommand(context, "celerant vrm avatar true", "VRM avatar enabled");
 		assertInfoContains(context, "avatar on");
 		assertInfoContains(context, "rig 15");
+		context.waitFor(client -> Boolean.TRUE.equals(
+			CelerantConfig.INSTANCE.getTree().getProp("avatarEnabled").get()), 100);
 
 		try {
 			setCamera(context, CameraType.THIRD_PERSON_BACK);
@@ -244,6 +798,8 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 			assertAutoHeadFiltered(idleAvatar, firstPersonAvatar);
 		} finally {
 			sendCommand(context, "celerant vrm avatar false", "VRM avatar disabled");
+			context.waitFor(client -> Boolean.FALSE.equals(
+				CelerantConfig.INSTANCE.getTree().getProp("avatarEnabled").get()), 100);
 			setCamera(context, CameraType.FIRST_PERSON);
 		}
 	}

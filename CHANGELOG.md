@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- 모든 VRM 사용자 작업을 OneConfig 1.1.6 제어 센터에서 수행하고, native `.vrm` 선택기, 알림, `V` 단축키와 Minecraft/OneConfig 키 설정을 제공합니다.
+- 실제 OneConfig 화면 열기·재진입부터 파일 선택, 입력, 슬라이더, 스위치와 모든 버튼을 pointer/key 이벤트로 조작하고, 로드·배치·표정·플레이어 교체·Iris toon·언로드 결과를 Client GameTest로 검증합니다.
+
 ## 1.1.1
 
 - Iris의 프로그램 이름이 포함되지 않은 변환 캐시 밖에서 VRM toon 패치를 적용합니다.

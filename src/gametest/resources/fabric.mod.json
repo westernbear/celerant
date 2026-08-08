@@ -9,6 +9,12 @@
 			"io.github.westernbear.celerant.client.CelerantClientGameTest"
 		]
 	},
+	"mixins": [
+		{
+			"config": "celerant.gametest.mixins.json",
+			"environment": "client"
+		}
+	],
 	"depends": {
 		"celerant": "*",
 		"fabric-client-gametest-api-v1": "*",

@@ -24,6 +24,8 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.BiConsumer;
+import java.util.function.Supplier;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -117,16 +119,26 @@ public final class VrmRuntime {
 	}
 
 	boolean load(String fileName, Vec3 fallbackPosition) {
+		Minecraft client = Minecraft.getInstance();
+		Path gameDirectory = client.gameDirectory.toPath();
+		return startLoad(client, () -> readModel(gameDirectory, fileName), fallbackPosition, null);
+	}
+
+	boolean load(Path path, Vec3 fallbackPosition, BiConsumer<Boolean, String> onFinished) {
+		Minecraft client = Minecraft.getInstance();
+		return startLoad(client, () -> readModel(path), fallbackPosition, onFinished);
+	}
+
+	private boolean startLoad(Minecraft client, Supplier<ParsedModel> reader, Vec3 fallbackPosition,
+		BiConsumer<Boolean, String> onFinished) {
 		if (loading) {
 			return false;
 		}
 
-		Minecraft client = Minecraft.getInstance();
-		Path gameDirectory = client.gameDirectory.toPath();
 		long ticket = ++generation;
 		loading = true;
-		CompletableFuture.supplyAsync(() -> readModel(gameDirectory, fileName), LOADER)
-			.whenComplete((parsed, error) -> client.execute(() -> finishLoad(ticket, parsed, error, fallbackPosition)));
+		CompletableFuture.supplyAsync(reader, LOADER).whenComplete((parsed, error) -> client.execute(() ->
+			finishLoad(ticket, parsed, error, fallbackPosition, onFinished)));
 		return true;
 	}
 
@@ -144,8 +156,16 @@ public final class VrmRuntime {
 		this.position = position;
 	}
 
-	void setScale(float scale) {
+	boolean setScale(float scale) {
+		if (!Float.isFinite(scale) || scale < 0.001F || scale > 100.0F) {
+			return false;
+		}
 		this.scale = scale;
+		return true;
+	}
+
+	float scale() {
+		return scale;
 	}
 
 	boolean setAvatarEnabled(boolean enabled) {
@@ -186,6 +206,9 @@ public final class VrmRuntime {
 	}
 
 	boolean setExpression(String name, float weight) {
+		if (name == null || !Float.isFinite(weight) || weight < 0.0F || weight > 1.0F) {
+			return false;
+		}
 		VrmExpression expression = expressions.get(normalizeName(name));
 		if (model == null || expression == null) {
 			return false;
@@ -219,6 +242,10 @@ public final class VrmRuntime {
 
 	boolean isLoading() {
 		return loading;
+	}
+
+	boolean isLoaded() {
+		return model != null;
 	}
 
 	String info() {
@@ -340,7 +367,8 @@ public final class VrmRuntime {
 		}
 	}
 
-	private void finishLoad(long ticket, ParsedModel parsed, Throwable error, Vec3 fallbackPosition) {
+	private void finishLoad(long ticket, ParsedModel parsed, Throwable error, Vec3 fallbackPosition,
+		BiConsumer<Boolean, String> onFinished) {
 		if (ticket != generation) {
 			return;
 		}
@@ -348,7 +376,11 @@ public final class VrmRuntime {
 		if (error != null) {
 			Throwable cause = unwrap(error);
 			Celerant.LOGGER.error("Could not load VRM", cause);
-			message("VRM load failed: " + safeMessage(cause));
+			String result = "VRM load failed: " + safeMessage(cause);
+			message(result);
+			if (onFinished != null) {
+				onFinished.accept(false, result);
+			}
 			return;
 		}
 
@@ -361,7 +393,11 @@ public final class VrmRuntime {
 		} catch (RuntimeException exception) {
 			runCleanup(newCleanup);
 			Celerant.LOGGER.error("Could not prepare VRM render data", exception);
-			message("VRM render preparation failed: " + safeMessage(exception));
+			String result = "VRM render preparation failed: " + safeMessage(exception);
+			message(result);
+			if (onFinished != null) {
+				onFinished.accept(false, result);
+			}
 			return;
 		}
 
@@ -380,7 +416,11 @@ public final class VrmRuntime {
 		vrmVersion = parsed.vrmVersion();
 		vrm0 = parsed.vrm0();
 		position = position == null ? fallbackPosition : position;
-		message("Loaded " + loadedPath.getFileName() + " (" + expressions.size() + " expressions)");
+		String result = "Loaded " + loadedPath.getFileName() + " (" + expressions.size() + " expressions)";
+		message(result);
+		if (onFinished != null) {
+			onFinished.accept(true, result);
+		}
 	}
 
 	private void releaseModel() {
@@ -409,33 +449,56 @@ public final class VrmRuntime {
 
 	private static ParsedModel readModel(Path gameDirectory, String fileName) {
 		try {
-			Path path = resolveModelPath(gameDirectory, fileName);
-			byte[] data = readBounded(path);
-			JsonObject json = readGlbJson(data);
-			validateSelfContained(json);
-			RawExpressions rawExpressions = parseRawExpressions(json);
-			Map<String, Integer> humanoid = parseHumanoid(json);
-			RawFirstPerson rawFirstPerson = parseFirstPerson(json);
-			GltfModel gltfModel = new GltfModelReader().readWithoutReferences(new ByteArrayInputStream(data));
-			if (gltfModel.getSceneModels().isEmpty()) {
-				throw new IOException("VRM has no renderable scene");
-			}
-			int sceneIndex = integer(json, "scene", 0);
-			if (sceneIndex < 0 || sceneIndex >= gltfModel.getSceneModels().size()) {
-				throw new IOException("VRM default scene index is out of range");
-			}
-			for (Map.Entry<String, Integer> bone : humanoid.entrySet()) {
-				if (bone.getValue() >= gltfModel.getNodeModels().size()) {
-					throw new IOException("VRM humanoid bone " + bone.getKey() + " has an invalid node index");
-				}
-			}
-			Map<String, VrmExpression> expressions = resolveExpressions(gltfModel, rawExpressions);
-			RenderViews renderViews = resolveRenderViews(gltfModel, humanoid, rawFirstPerson);
-			return new ParsedModel(path, data.length, gltfModel, expressions, humanoid, renderViews, sceneIndex,
-				rawExpressions.version(), "0.x".equals(rawExpressions.version()));
+			return readResolvedModel(resolveModelPath(gameDirectory, fileName));
 		} catch (IOException | RuntimeException exception) {
 			throw new IllegalStateException(exception.getMessage(), exception);
 		}
+	}
+
+	private static ParsedModel readModel(Path path) {
+		try {
+			return readResolvedModel(resolveSelectedModelPath(path));
+		} catch (IOException | RuntimeException exception) {
+			throw new IllegalStateException(exception.getMessage(), exception);
+		}
+	}
+
+	private static ParsedModel readResolvedModel(Path path) throws IOException {
+		byte[] data = readBounded(path);
+		JsonObject json = readGlbJson(data);
+		validateSelfContained(json);
+		RawExpressions rawExpressions = parseRawExpressions(json);
+		Map<String, Integer> humanoid = parseHumanoid(json);
+		RawFirstPerson rawFirstPerson = parseFirstPerson(json);
+		GltfModel gltfModel = new GltfModelReader().readWithoutReferences(new ByteArrayInputStream(data));
+		if (gltfModel.getSceneModels().isEmpty()) {
+			throw new IOException("VRM has no renderable scene");
+		}
+		int sceneIndex = integer(json, "scene", 0);
+		if (sceneIndex < 0 || sceneIndex >= gltfModel.getSceneModels().size()) {
+			throw new IOException("VRM default scene index is out of range");
+		}
+		for (Map.Entry<String, Integer> bone : humanoid.entrySet()) {
+			if (bone.getValue() >= gltfModel.getNodeModels().size()) {
+				throw new IOException("VRM humanoid bone " + bone.getKey() + " has an invalid node index");
+			}
+		}
+		Map<String, VrmExpression> expressions = resolveExpressions(gltfModel, rawExpressions);
+		RenderViews renderViews = resolveRenderViews(gltfModel, humanoid, rawFirstPerson);
+		return new ParsedModel(path, data.length, gltfModel, expressions, humanoid, renderViews, sceneIndex,
+			rawExpressions.version(), "0.x".equals(rawExpressions.version()));
+	}
+
+	private static Path resolveSelectedModelPath(Path path) throws IOException {
+		if (path == null || !path.toString().toLowerCase(Locale.ROOT).endsWith(".vrm")) {
+			throw new IOException("only .vrm files are allowed");
+		}
+		Path realPath = path.toAbsolutePath().normalize().toRealPath();
+		if (!realPath.toString().toLowerCase(Locale.ROOT).endsWith(".vrm")
+			|| !Files.isRegularFile(realPath, LinkOption.NOFOLLOW_LINKS)) {
+			throw new IOException("model is not a regular .vrm file");
+		}
+		return realPath;
 	}
 
 	private static Path resolveModelPath(Path gameDirectory, String fileName) throws IOException {

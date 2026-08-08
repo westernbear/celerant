@@ -8,6 +8,10 @@ group = project.maven_group
 
 repositories {
 	maven {
+		url = "https://repo.polyfrost.org/releases"
+		content { includeGroup "org.polyfrost.oneconfig" }
+	}
+	maven {
 		url = "https://jitpack.io"
 		content { includeGroup "com.github.westernbear" }
 	}
@@ -54,6 +58,14 @@ dependencies {
 	runtimeOnly "maven.modrinth:iris:${project.iris_version}"
 	runtimeOnly "net.caffeinemc:sodium-fabric:${project.sodium_version}"
 	compileOnly "io.github.douira:glsl-transformer:3.0.0-pre3"
+	// OneConfig 1.1.6 ships its API modules nested; the public descriptors used here match 1.1.4.
+	compileOnly("org.polyfrost.oneconfig:26.2-fabric:${project.oneconfig_api_version}") { transitive = false }
+	compileOnly("org.polyfrost.oneconfig:config:${project.oneconfig_api_version}") { transitive = false }
+	compileOnly("org.polyfrost.oneconfig:config-impl:${project.oneconfig_api_version}") { transitive = false }
+	compileOnly("org.polyfrost.oneconfig:notifications:${project.oneconfig_api_version}") { transitive = false }
+	runtimeOnly("maven.modrinth:oneconfig:${project.oneconfig_version}") { transitive = false }
+	runtimeOnly "maven.modrinth:compose-multiplatform:${project.compose_multiplatform_version}"
+	runtimeOnly "net.fabricmc:fabric-language-kotlin:${project.fabric_language_kotlin_version}"
 }
 
 processResources {

@@ -1,22 +1,21 @@
 {
   "0": "IrisToonPatcher",
-  "1": "NodeModel",
+  "1": "CelerantClient",
   "2": "VrmRuntime",
   "3": "CelerantClientGameTest",
   "4": "VrmRuntime.java",
   "5": "VrmRig",
-  "6": ".selfCheck",
-  "7": ".register",
+  "6": "InputConstantsGameTestMixin.java",
+  "7": ".getInstance",
   "8": "Celerant VRM",
   "9": "LivingEntityRendererMixin.java",
-  "10": "RawBinding",
+  "10": "TinyFdGameTestMixin.java",
   "11": "release.sh",
   "12": "gradlew",
   "13": "AvatarRendererMixin.java",
-  "14": ".resolveRenderViews",
+  "14": "PresentedWindowCapture",
   "15": "AGENTS.md",
   "16": "Changelog",
   "17": "build.gradle",
-  "18": "settings.gradle",
-  "19": ".parseRawExpressions"
+  "18": "settings.gradle"
 }

@@ -27,6 +27,7 @@
 		"java": ">=25",
 		"fabric-api": "*",
 		"mcgltf": "26.2-Fabric-2.3.1.0",
-		"iris": "1.11.2+mc26.2"
+		"iris": "1.11.2+mc26.2",
+		"oneconfig": ">=1.1.6"
 	}
 }

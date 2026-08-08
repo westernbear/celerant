@@ -29,8 +29,17 @@ public final class IrisToonPatcher {
 	private static final Pattern IRIS_NORMAL_MATRIX = Pattern.compile("\\biris_NormalMat\\b");
 	private static final Pattern SHADOW_LIGHT_POSITION = Pattern.compile("\\bshadowLightPosition\\b");
 	private static final Pattern NON_PRIMARY_FRAGMENT_OUTPUT = Pattern.compile("\\biris_FragData[1-9][0-9]*\\b");
+	private static volatile boolean enabled = true;
 
 	private IrisToonPatcher() {
+	}
+
+	public static boolean isEnabled() {
+		return enabled;
+	}
+
+	public static void setEnabled(boolean enabled) {
+		IrisToonPatcher.enabled = enabled;
 	}
 
 	public static Map<PatchShaderType, String> patch(
@@ -39,7 +48,7 @@ public final class IrisToonPatcher {
 			Parameters parameters,
 			Map<PatchShaderType, String> transformed
 	) {
-		if (Boolean.getBoolean("celerant.testing.disableToonPatch")) {
+		if (!enabled || Boolean.getBoolean("celerant.testing.disableToonPatch")) {
 			return transformed;
 		}
 		if (!isEntityProgram(name) || parameters == null || parameters.patch != Patch.VANILLA || transformed == null) {

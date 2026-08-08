@@ -35,6 +35,14 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE: "1"
         run: xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runClientGameTest --no-daemon --stacktrace
 
+      - name: Upload OneConfig UI evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: celerant-ui-${{ github.sha }}
+          path: build/run/clientGameTest/screenshots/celerant-oneconfig-*-os.png
+          if-no-files-found: warn
+
       - name: Upload JARs
         uses: actions/upload-artifact@v7
         with:
