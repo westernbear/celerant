@@ -1,5 +1,6 @@
 package io.github.westernbear.celerant.client;
 
+import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.brigadier.arguments.FloatArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 
@@ -48,6 +49,15 @@ public final class VrmClientCommands {
 							VrmRuntime.getInstance().setScale(scale);
 							return feedback(context.getSource(), "VRM scale set to " + scale);
 						})))
+				.then(ClientCommands.literal("avatar")
+					.then(ClientCommands.argument("enabled", BoolArgumentType.bool()).executes(context -> {
+						boolean enabled = BoolArgumentType.getBool(context, "enabled");
+						VrmRuntime runtime = VrmRuntime.getInstance();
+						if (!runtime.setAvatarEnabled(enabled)) {
+							return error(context.getSource(), "Cannot enable avatar: " + runtime.avatarProblem());
+						}
+						return feedback(context.getSource(), "VRM avatar " + (enabled ? "enabled" : "disabled"));
+					})))
 				.then(ClientCommands.literal("expression")
 					.executes(context -> {
 						VrmRuntime runtime = VrmRuntime.getInstance();

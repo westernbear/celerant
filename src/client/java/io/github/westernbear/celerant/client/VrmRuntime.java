@@ -13,6 +13,8 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -37,11 +39,18 @@ import de.javagl.jgltf.model.GltfModel;
 import de.javagl.jgltf.model.MeshModel;
 import de.javagl.jgltf.model.MeshPrimitiveModel;
 import de.javagl.jgltf.model.NodeModel;
+import de.javagl.jgltf.model.impl.DefaultNodeModel;
 import de.javagl.jgltf.model.io.GltfModelReader;
 import io.github.westernbear.celerant.Celerant;
+import io.github.westernbear.celerant.client.mixin.AvatarRendererAccessor;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.model.player.PlayerModel;
+import net.minecraft.client.player.AbstractClientPlayer;
+import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.entity.player.AvatarRenderer;
+import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.BlockPos;
@@ -71,6 +80,10 @@ public final class VrmRuntime {
 	private static final VrmRuntime INSTANCE = new VrmRuntime();
 
 	private RenderedGltfModel model;
+	private VrmRig rig;
+	private RenderedGltfModel.RenderView firstPersonView = RenderedGltfModel.FULL_VIEW;
+	private RenderedGltfModel.RenderView thirdPersonView = RenderedGltfModel.FULL_VIEW;
+	private FirstPersonAnchor firstPersonAnchor;
 	private List<Runnable> cleanup = List.of();
 	private Map<String, VrmExpression> expressions = Map.of();
 	private IdentityHashMap<NodeModel, float[]> baseWeights = new IdentityHashMap<>();
@@ -82,6 +95,7 @@ public final class VrmRuntime {
 	private int sceneIndex;
 	private boolean initialized;
 	private boolean loading;
+	private boolean avatarEnabled;
 	private boolean vrm0;
 	private String vrmVersion = "-";
 	private String activeExpression;
@@ -98,7 +112,7 @@ public final class VrmRuntime {
 		LevelRenderEvents.COLLECT_SUBMITS.register(INSTANCE::render);
 	}
 
-	static VrmRuntime getInstance() {
+	public static VrmRuntime getInstance() {
 		return INSTANCE;
 	}
 
@@ -132,6 +146,43 @@ public final class VrmRuntime {
 
 	void setScale(float scale) {
 		this.scale = scale;
+	}
+
+	boolean setAvatarEnabled(boolean enabled) {
+		if (enabled && (model == null || rig == null || !rig.isUsable())) {
+			return false;
+		}
+		avatarEnabled = enabled;
+		return true;
+	}
+
+	String avatarProblem() {
+		if (model == null) {
+			return "No VRM is loaded";
+		}
+		return rig == null || rig.isUsable() ? "-" : rig.problem();
+	}
+
+	public boolean isLocalAvatarActive() {
+		return avatarEnabled && model != null && rig != null && rig.isUsable();
+	}
+
+	public boolean shouldReplacePlayer(AvatarRenderState state) {
+		Minecraft client = Minecraft.getInstance();
+		return isLocalAvatarActive() && client.player != null && state.id == client.player.getId();
+	}
+
+	public void submitPlayer(AvatarRenderState state, PlayerModel playerModel, PoseStack poseStack,
+		SubmitNodeCollector collector) {
+		if (!shouldReplacePlayer(state) || state.isInvisible || state.isSpectator || model.renderedGltfScenes.isEmpty()) {
+			return;
+		}
+		playerModel.setupAnim(state);
+		submitPosed(state, playerModel, poseStack, collector, thirdPersonView, null);
+	}
+
+	float[] debugBoneRotation(String bone) {
+		return rig == null ? null : rig.rotation(bone);
 	}
 
 	boolean setExpression(String name, float weight) {
@@ -180,13 +231,23 @@ public final class VrmRuntime {
 		String location = position == null ? "unset" : String.format(Locale.ROOT, "%.2f %.2f %.2f", position.x, position.y, position.z);
 		String expression = activeExpression == null ? "none"
 			: String.format(Locale.ROOT, "%s %.2f", activeExpression, activeExpressionWeight);
+		String rigInfo = rig == null ? "0" : Integer.toString(rig.boneCount());
 		return String.format(Locale.ROOT,
-			"VRM: %s, spec %s, %.1f MiB, scenes %d, primitives %d, submitted vertices %d, position %s, scale %.3f, expression %s, available %d",
+			"VRM: %s, spec %s, %.1f MiB, scenes %d, primitives %d, submitted vertices %d, position %s, scale %.3f, avatar %s, rig %s, expression %s, available %d",
 			loadedPath.getFileName(), vrmVersion, fileSize / 1048576.0, model.renderedGltfScenes.size(),
-			primitiveCount, vertexCount, location, scale, expression, expressions.size());
+			primitiveCount, vertexCount, location, scale, avatarEnabled ? "on" : "off", rigInfo, expression,
+			expressions.size());
 	}
 
 	private void render(LevelRenderContext context) {
+		if (isLocalAvatarActive()) {
+			renderFirstPerson(context);
+			return;
+		}
+		renderPlaced(context);
+	}
+
+	private void renderPlaced(LevelRenderContext context) {
 		Minecraft client = Minecraft.getInstance();
 		if (model == null || position == null || client.level == null || model.renderedGltfScenes.isEmpty()) {
 			return;
@@ -213,6 +274,72 @@ public final class VrmRuntime {
 		}
 	}
 
+	private void renderFirstPerson(LevelRenderContext context) {
+		Minecraft client = Minecraft.getInstance();
+		if (client.player == null || client.level == null || client.getCameraEntity() != client.player
+			|| !client.options.getCameraType().isFirstPerson()) {
+			return;
+		}
+
+		CameraRenderState camera = context.levelState().cameraRenderState;
+		PoseStack poseStack = context.poseStack();
+		if (camera == null || camera.pos == null || poseStack == null) {
+			return;
+		}
+
+		float partialTick = client.getDeltaTracker().getGameTimeDeltaPartialTick(false);
+		AvatarRenderer<AbstractClientPlayer> renderer = client.getEntityRenderDispatcher().getPlayerRenderer(client.player);
+		AvatarRenderState state = renderer.createRenderState(client.player, partialTick);
+		if (state.isInvisible || state.isSpectator) {
+			return;
+		}
+		PlayerModel playerModel = renderer.getModel();
+		playerModel.setupAnim(state);
+
+		poseStack.pushPose();
+		try {
+			if (firstPersonAnchor == null) {
+				poseStack.translate(state.x - camera.pos.x, state.y - camera.pos.y, state.z - camera.pos.z);
+			}
+			poseStack.scale(state.scale, state.scale, state.scale);
+			((AvatarRendererAccessor) renderer).celerant$setupRotations(
+				state, poseStack, state.bodyRot, state.scale);
+			submitPosed(state, playerModel, poseStack, context.submitNodeCollector(), firstPersonView,
+				firstPersonAnchor);
+		} finally {
+			poseStack.popPose();
+		}
+	}
+
+	private void submitPosed(AvatarRenderState state, PlayerModel playerModel, PoseStack poseStack,
+		SubmitNodeCollector collector, RenderedGltfModel.RenderView view, FirstPersonAnchor cameraAnchor) {
+		AbstractClientPlayer player = Minecraft.getInstance().player;
+		boolean airborne = player != null && !player.onGround() && !player.getAbilities().flying
+			&& !player.onClimbable() && !state.isInWater && state.swimAmount <= 0.0F
+			&& !state.isPassenger && !state.isFallFlying && !state.isAutoSpinAttack && state.deathTime <= 0.0F;
+		float verticalSpeed = player == null ? 0.0F : (float) player.getDeltaMovement().y;
+		rig.apply(playerModel, state, verticalSpeed, airborne);
+		float[] anchor = cameraAnchor == null ? null : cameraAnchor.position();
+		if (anchor != null && !finite(anchor)) {
+			rig.restore();
+			return;
+		}
+		poseStack.pushPose();
+		try {
+			if (!vrm0) {
+				poseStack.mulPose(Axis.YP.rotationDegrees(180.0F));
+			}
+			poseStack.scale(scale, scale, scale);
+			if (anchor != null) {
+				poseStack.translate(-anchor[0], -anchor[1], -anchor[2]);
+			}
+			model.submit(sceneIndex, poseStack, collector, state.lightCoords, VRM_OVERLAY, view);
+		} finally {
+			poseStack.popPose();
+			rig.restore();
+		}
+	}
+
 	private void finishLoad(long ticket, ParsedModel parsed, Throwable error, Vec3 fallbackPosition) {
 		if (ticket != generation) {
 			return;
@@ -227,8 +354,10 @@ public final class VrmRuntime {
 
 		List<Runnable> newCleanup = new ArrayList<>();
 		RenderedGltfModel newModel;
+		VrmRig newRig;
 		try {
 			newModel = new RenderedGltfModel(newCleanup, parsed.gltfModel());
+			newRig = VrmRig.create(parsed.gltfModel(), parsed.humanoid());
 		} catch (RuntimeException exception) {
 			runCleanup(newCleanup);
 			Celerant.LOGGER.error("Could not prepare VRM render data", exception);
@@ -238,6 +367,10 @@ public final class VrmRuntime {
 
 		releaseModel();
 		model = newModel;
+		rig = newRig;
+		firstPersonView = parsed.renderViews().firstPerson();
+		thirdPersonView = parsed.renderViews().thirdPerson();
+		firstPersonAnchor = parsed.renderViews().firstPersonAnchor();
 		cleanup = newCleanup;
 		expressions = parsed.expressions();
 		baseWeights = captureBaseWeights(expressions);
@@ -253,6 +386,10 @@ public final class VrmRuntime {
 	private void releaseModel() {
 		runCleanup(cleanup);
 		model = null;
+		rig = null;
+		firstPersonView = RenderedGltfModel.FULL_VIEW;
+		thirdPersonView = RenderedGltfModel.FULL_VIEW;
+		firstPersonAnchor = null;
 		cleanup = List.of();
 		expressions = Map.of();
 		baseWeights = new IdentityHashMap<>();
@@ -260,6 +397,7 @@ public final class VrmRuntime {
 		fileSize = 0;
 		sceneIndex = 0;
 		vrmVersion = "-";
+		avatarEnabled = false;
 		vrm0 = false;
 		activeExpression = null;
 		activeExpressionWeight = 0.0F;
@@ -276,6 +414,8 @@ public final class VrmRuntime {
 			JsonObject json = readGlbJson(data);
 			validateSelfContained(json);
 			RawExpressions rawExpressions = parseRawExpressions(json);
+			Map<String, Integer> humanoid = parseHumanoid(json);
+			RawFirstPerson rawFirstPerson = parseFirstPerson(json);
 			GltfModel gltfModel = new GltfModelReader().readWithoutReferences(new ByteArrayInputStream(data));
 			if (gltfModel.getSceneModels().isEmpty()) {
 				throw new IOException("VRM has no renderable scene");
@@ -284,9 +424,15 @@ public final class VrmRuntime {
 			if (sceneIndex < 0 || sceneIndex >= gltfModel.getSceneModels().size()) {
 				throw new IOException("VRM default scene index is out of range");
 			}
+			for (Map.Entry<String, Integer> bone : humanoid.entrySet()) {
+				if (bone.getValue() >= gltfModel.getNodeModels().size()) {
+					throw new IOException("VRM humanoid bone " + bone.getKey() + " has an invalid node index");
+				}
+			}
 			Map<String, VrmExpression> expressions = resolveExpressions(gltfModel, rawExpressions);
-			return new ParsedModel(path, data.length, gltfModel, expressions, sceneIndex, rawExpressions.version(),
-				"0.x".equals(rawExpressions.version()));
+			RenderViews renderViews = resolveRenderViews(gltfModel, humanoid, rawFirstPerson);
+			return new ParsedModel(path, data.length, gltfModel, expressions, humanoid, renderViews, sceneIndex,
+				rawExpressions.version(), "0.x".equals(rawExpressions.version()));
 		} catch (IOException | RuntimeException exception) {
 			throw new IllegalStateException(exception.getMessage(), exception);
 		}
@@ -417,6 +563,184 @@ public final class VrmRuntime {
 				throw new IOException("external " + kind + " resources are not allowed");
 			}
 		}
+	}
+
+	private static Map<String, Integer> parseHumanoid(JsonObject root) throws IOException {
+		JsonObject extensions = object(root, "extensions");
+		JsonObject vrm1 = object(extensions, "VRMC_vrm");
+		LinkedHashMap<String, Integer> bones = new LinkedHashMap<>();
+		if (vrm1 != null) {
+			JsonObject humanBones = object(object(vrm1, "humanoid"), "humanBones");
+			if (humanBones != null) {
+				for (Map.Entry<String, JsonElement> entry : humanBones.entrySet()) {
+					JsonObject bone = entry.getValue().isJsonObject() ? entry.getValue().getAsJsonObject() : null;
+					addHumanoidBone(bones, entry.getKey(), integer(bone, "node", -1));
+				}
+			}
+		} else {
+			JsonArray humanBones = array(object(object(extensions, "VRM"), "humanoid"), "humanBones");
+			if (humanBones != null) {
+				for (JsonElement element : humanBones) {
+					JsonObject bone = element.isJsonObject() ? element.getAsJsonObject() : null;
+					addHumanoidBone(bones, string(bone, "bone"), integer(bone, "node", -1));
+				}
+			}
+		}
+
+		HashSet<Integer> nodes = new HashSet<>();
+		for (Map.Entry<String, Integer> bone : bones.entrySet()) {
+			if (!nodes.add(bone.getValue())) {
+				throw new IOException("VRM humanoid maps more than one bone to node " + bone.getValue());
+			}
+		}
+		return Map.copyOf(bones);
+	}
+
+	private static void addHumanoidBone(Map<String, Integer> output, String name, int node) throws IOException {
+		if (name == null || name.isBlank() || node < 0) {
+			return;
+		}
+		if (output.putIfAbsent(name, node) != null) {
+			throw new IOException("VRM humanoid contains duplicate bone " + name);
+		}
+	}
+
+	private static RawFirstPerson parseFirstPerson(JsonObject root) throws IOException {
+		JsonObject extensions = object(root, "extensions");
+		JsonObject vrm1 = object(extensions, "VRMC_vrm");
+		boolean nodeIndexed = vrm1 != null;
+		JsonObject firstPerson = object(nodeIndexed ? vrm1 : object(extensions, "VRM"), "firstPerson");
+		int firstPersonBone = nodeIndexed ? -1 : integer(firstPerson, "firstPersonBone", -1);
+		float[] offset = null;
+		JsonObject rawOffset = nodeIndexed ? null : object(firstPerson, "firstPersonBoneOffset");
+		if (rawOffset != null) {
+			float[] parsed = {
+				decimal(rawOffset, "x", 0.0F), decimal(rawOffset, "y", 0.0F), decimal(rawOffset, "z", 0.0F)
+			};
+			if (!finite(parsed)) {
+				throw new IOException("VRM first-person bone offset is not finite");
+			}
+			if (Math.abs(parsed[0]) + Math.abs(parsed[1]) + Math.abs(parsed[2]) > 1.0E-5F) {
+				offset = parsed;
+			}
+		}
+		JsonArray annotations = array(firstPerson, "meshAnnotations");
+		LinkedHashMap<Integer, ViewType> result = new LinkedHashMap<>();
+		if (annotations == null) {
+			return new RawFirstPerson(nodeIndexed, firstPersonBone, offset, result);
+		}
+
+		String indexName = nodeIndexed ? "node" : "mesh";
+		String typeName = nodeIndexed ? "type" : "firstPersonFlag";
+		for (JsonElement element : annotations) {
+			JsonObject annotation = element.isJsonObject() ? element.getAsJsonObject() : null;
+			int index = integer(annotation, indexName, -1);
+			String rawType = string(annotation, typeName);
+			if (index < 0 || rawType == null) {
+				throw new IOException("invalid VRM first-person mesh annotation");
+			}
+			ViewType type = switch (rawType.toLowerCase(Locale.ROOT)) {
+				case "auto" -> ViewType.AUTO;
+				case "both" -> ViewType.BOTH;
+				case "firstpersononly" -> ViewType.FIRST_PERSON_ONLY;
+				case "thirdpersononly" -> ViewType.THIRD_PERSON_ONLY;
+				default -> throw new IOException("unsupported VRM first-person annotation type: " + rawType);
+			};
+			if (result.putIfAbsent(index, type) != null) {
+				throw new IOException("duplicate VRM first-person annotation index " + index);
+			}
+		}
+		return new RawFirstPerson(nodeIndexed, firstPersonBone, offset, result);
+	}
+
+	private static RenderViews resolveRenderViews(GltfModel model, Map<String, Integer> humanoid,
+		RawFirstPerson raw) throws IOException {
+		Set<NodeModel> hiddenJoints = identitySet();
+		Integer headIndex = raw.firstPersonBone() >= 0 ? raw.firstPersonBone() : humanoid.get("head");
+		FirstPersonAnchor firstPersonAnchor = null;
+		if (headIndex != null) {
+			if (headIndex >= model.getNodeModels().size()) {
+				throw new IOException("VRM first-person bone index is out of range");
+			}
+			NodeModel head = model.getNodeModels().get(headIndex);
+			collectDescendants(head, hiddenJoints);
+			if (raw.offset() != null) {
+				firstPersonAnchor = new FirstPersonAnchor(head, raw.offset());
+				if (!finite(firstPersonAnchor.position())) {
+					throw new IOException("VRM first-person camera anchor is not finite");
+				}
+			}
+		}
+		Integer neckIndex = humanoid.get("neck");
+		if (neckIndex != null) {
+			// ponytail: the Minecraft eye camera exposes neck-weighted head seam triangles on common VRM0 exports.
+			hiddenJoints.add(model.getNodeModels().get(neckIndex));
+		}
+
+		Set<NodeModel> firstOnlyNodes = identitySet();
+		Set<NodeModel> thirdOnlyNodes = identitySet();
+		Set<NodeModel> autoNodes = identitySet();
+		Set<MeshModel> firstOnlyMeshes = identitySet();
+		Set<MeshModel> thirdOnlyMeshes = identitySet();
+		Set<MeshModel> autoMeshes = identitySet();
+		if (raw.nodeIndexed()) {
+			List<NodeModel> nodes = model.getNodeModels();
+			IdentityHashMap<NodeModel, ViewType> types = new IdentityHashMap<>();
+			for (NodeModel node : nodes) {
+				if (!node.getMeshModels().isEmpty()) {
+					types.put(node, ViewType.AUTO);
+				}
+			}
+			for (Map.Entry<Integer, ViewType> annotation : raw.annotations().entrySet()) {
+				if (annotation.getKey() >= nodes.size()) {
+					throw new IOException("VRM first-person node index is out of range");
+				}
+				types.put(nodes.get(annotation.getKey()), annotation.getValue());
+			}
+			types.forEach((node, type) -> addViewType(type, node, firstOnlyNodes, thirdOnlyNodes, autoNodes));
+		} else {
+			List<MeshModel> meshes = model.getMeshModels();
+			IdentityHashMap<MeshModel, ViewType> types = new IdentityHashMap<>();
+			for (MeshModel mesh : meshes) {
+				types.put(mesh, ViewType.AUTO);
+			}
+			for (Map.Entry<Integer, ViewType> annotation : raw.annotations().entrySet()) {
+				if (annotation.getKey() >= meshes.size()) {
+					throw new IOException("VRM first-person mesh index is out of range");
+				}
+				types.put(meshes.get(annotation.getKey()), annotation.getValue());
+			}
+			types.forEach((mesh, type) -> addViewType(type, mesh, firstOnlyMeshes, thirdOnlyMeshes, autoMeshes));
+		}
+
+		return new RenderViews(
+			new RenderedGltfModel.RenderView(hiddenJoints, thirdOnlyNodes, thirdOnlyMeshes, autoNodes, autoMeshes),
+			new RenderedGltfModel.RenderView(Set.of(), firstOnlyNodes, firstOnlyMeshes, Set.of(), Set.of()),
+			firstPersonAnchor);
+	}
+
+	private static <T> void addViewType(ViewType type, T value, Set<T> firstOnly, Set<T> thirdOnly,
+		Set<T> automatic) {
+		switch (type) {
+			case FIRST_PERSON_ONLY -> firstOnly.add(value);
+			case THIRD_PERSON_ONLY -> thirdOnly.add(value);
+			case AUTO -> automatic.add(value);
+			case BOTH -> {
+			}
+		}
+	}
+
+	private static void collectDescendants(NodeModel node, Set<NodeModel> output) {
+		if (!output.add(node)) {
+			return;
+		}
+		for (NodeModel child : node.getChildren()) {
+			collectDescendants(child, output);
+		}
+	}
+
+	private static <T> Set<T> identitySet() {
+		return Collections.newSetFromMap(new IdentityHashMap<>());
 	}
 
 	private static RawExpressions parseRawExpressions(JsonObject root) {
@@ -669,7 +993,16 @@ public final class VrmRuntime {
 			? element.getAsBoolean() : fallback;
 	}
 
-	static void selfCheck() {
+	private static boolean finite(float[] values) {
+		for (float value : values) {
+			if (!Float.isFinite(value)) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	static void selfCheck() throws IOException {
 		RawExpressions vrm0 = parseRawExpressions(JsonParser.parseString("""
 			{"extensions":{"VRM":{"blendShapeMaster":{"blendShapeGroups":[
 			{"name":"Joy","presetName":"joy","isBinary":true,"binds":[{"mesh":2,"index":1,"weight":75}]}
@@ -680,6 +1013,22 @@ public final class VrmRuntime {
 			"happy":{"morphTargetBinds":[{"node":3,"index":0,"weight":0.5}]}
 			}}}}}
 			""").getAsJsonObject());
+		Map<String, Integer> humanoid = parseHumanoid(JsonParser.parseString("""
+			{"extensions":{"VRMC_vrm":{"humanoid":{"humanBones":{
+			"hips":{"node":1},"head":{"node":2}
+			}}}}}
+			""").getAsJsonObject());
+		RawFirstPerson vrm0View = parseFirstPerson(JsonParser.parseString("""
+			{"extensions":{"VRM":{"firstPerson":{"firstPersonBone":2,
+			"firstPersonBoneOffset":{"x":0.1,"y":0.2,"z":0.3},"meshAnnotations":[
+			{"mesh":4,"firstPersonFlag":"ThirdPersonOnly"}
+			]}}}}
+			""").getAsJsonObject());
+		RawFirstPerson vrm1View = parseFirstPerson(JsonParser.parseString("""
+			{"extensions":{"VRMC_vrm":{"firstPerson":{"meshAnnotations":[
+			{"node":3,"type":"firstPersonOnly"}
+			]}}}}
+			""").getAsJsonObject());
 		require("0.x".equals(vrm0.version()), "VRM0 version");
 		require(Math.abs(vrm0.expressions().get("joy").bindings().getFirst().weight() - 0.75F) < 1.0E-6F,
 			"VRM0 weight conversion");
@@ -689,9 +1038,26 @@ public final class VrmRuntime {
 		require("1.0".equals(vrm1.version()), "VRM1 version");
 		require(Math.abs(vrm1.expressions().get("happy").bindings().getFirst().weight() - 0.5F) < 1.0E-6F,
 			"VRM1 weight");
+		require(humanoid.get("hips") == 1 && humanoid.get("head") == 2, "VRM1 humanoid bones");
+		require(!vrm0View.nodeIndexed() && vrm0View.firstPersonBone() == 2
+			&& Math.abs(vrm0View.offset()[1] - 0.2F) < 1.0E-6F
+			&& vrm0View.annotations().get(4) == ViewType.THIRD_PERSON_ONLY,
+			"VRM0 first-person mesh annotation");
+		require(vrm1View.nodeIndexed() && vrm1View.annotations().get(3) == ViewType.FIRST_PERSON_ONLY,
+			"VRM1 first-person node annotation");
+		DefaultNodeModel anchorBone = new DefaultNodeModel();
+		anchorBone.setTranslation(new float[] {1.0F, 2.0F, 3.0F});
+		FirstPersonAnchor dynamicAnchor = new FirstPersonAnchor(anchorBone, new float[] {1.0F, 0.0F, 0.0F});
+		require(Math.abs(dynamicAnchor.position()[0] - 2.0F) < 1.0E-6F,
+			"first-person anchor rest position");
+		anchorBone.setRotation(new float[] {0.0F, 0.0F, 0.70710677F, 0.70710677F});
+		float[] rotatedAnchor = dynamicAnchor.position();
+		require(Math.abs(rotatedAnchor[0] - 1.0F) < 1.0E-5F
+			&& Math.abs(rotatedAnchor[1] - 3.0F) < 1.0E-5F,
+			"first-person anchor follows the current bone transform");
 	}
 
-	public static void main(String[] args) {
+	public static void main(String[] args) throws IOException {
 		selfCheck();
 	}
 
@@ -702,7 +1068,46 @@ public final class VrmRuntime {
 	}
 
 	private record ParsedModel(Path path, long fileSize, GltfModel gltfModel,
-		Map<String, VrmExpression> expressions, int sceneIndex, String vrmVersion, boolean vrm0) {
+		Map<String, VrmExpression> expressions, Map<String, Integer> humanoid, RenderViews renderViews, int sceneIndex,
+		String vrmVersion, boolean vrm0) {
+	}
+
+	private record RenderViews(RenderedGltfModel.RenderView firstPerson,
+		RenderedGltfModel.RenderView thirdPerson, FirstPersonAnchor firstPersonAnchor) {
+	}
+
+	private static final class FirstPersonAnchor {
+		private final NodeModel bone;
+		private final float[] offset;
+		private final float[] transform = new float[16];
+		private final float[] position = new float[3];
+
+		private FirstPersonAnchor(NodeModel bone, float[] offset) {
+			this.bone = bone;
+			this.offset = offset.clone();
+		}
+
+		private float[] position() {
+			float[] matrix = bone.computeGlobalTransform(transform);
+			float x = offset[0];
+			float y = offset[1];
+			float z = offset[2];
+			position[0] = matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12];
+			position[1] = matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13];
+			position[2] = matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14];
+			return position;
+		}
+	}
+
+	private record RawFirstPerson(boolean nodeIndexed, int firstPersonBone, float[] offset,
+		LinkedHashMap<Integer, ViewType> annotations) {
+	}
+
+	private enum ViewType {
+		AUTO,
+		BOTH,
+		FIRST_PERSON_ONLY,
+		THIRD_PERSON_ONLY
 	}
 
 	private record VrmExpression(String name, List<MorphBinding> bindings, boolean binary) {

@@ -30,8 +30,8 @@
     "semantic_hash": ""
   },
   "src/client/resources/celerant.client.mixins.json": {
-    "mtime": 1785908851.3262553,
-    "ast_hash": "c43db06889b5ba13d0c0bf00f0bdc59d",
+    "mtime": 1786147433.6710043,
+    "ast_hash": "8370c24f33b02f9cc8897bb498f13eab",
     "semantic_hash": ""
   },
   "src/main/java/io/github/westernbear/celerant/Celerant.java": {
@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "src/main/resources/fabric.mod.json": {
-    "mtime": 1785910541.1859894,
-    "ast_hash": "f4f70e4ccc8b28b3f883b1b6297d0191",
+    "mtime": 1786146350.1005635,
+    "ast_hash": "e5edb1420f722a1becfa5d8f3cf008b6",
     "semantic_hash": ""
   },
   ".github/workflows/build.yml": {
@@ -55,8 +55,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1785915147.804443,
-    "ast_hash": "94a6110adcab0268ac0f56c19961eb9e",
+    "mtime": 1786148018.981794,
+    "ast_hash": "542a625066daa2c391ee60b317280d39",
     "semantic_hash": ""
   },
   "src/main/resources/assets/celerant/icon.png": {
@@ -65,18 +65,18 @@
     "semantic_hash": ""
   },
   "src/client/java/io/github/westernbear/celerant/client/VrmClientCommands.java": {
-    "mtime": 1785909658.06739,
-    "ast_hash": "9d3add070edcecdd3b1ddbaeff203617",
+    "mtime": 1785917093.130123,
+    "ast_hash": "a3f5e52b9a8f0c72ad4aacec9ba00b19",
     "semantic_hash": ""
   },
   "src/client/java/io/github/westernbear/celerant/client/VrmRuntime.java": {
-    "mtime": 1785911348.182234,
-    "ast_hash": "d15ed7e36ef8e2edcba82a288a28105d",
+    "mtime": 1786149420.1238682,
+    "ast_hash": "0cc5798befba19ab87761032fbfb5ed6",
     "semantic_hash": ""
   },
   "src/gametest/java/io/github/westernbear/celerant/client/CelerantClientGameTest.java": {
-    "mtime": 1785915396.4987378,
-    "ast_hash": "d282753d029f07da06e6b71ae65d166a",
+    "mtime": 1786148710.953333,
+    "ast_hash": "d802c90f33bd8eae8ac539f44cca55d4",
     "semantic_hash": ""
   },
   "src/gametest/resources/fabric.mod.json": {
@@ -92,6 +92,26 @@
   ".github/workflows/release.yml": {
     "mtime": 1785913629.2013702,
     "ast_hash": "f649044c4880e9b76480810b477a7e9c",
+    "semantic_hash": ""
+  },
+  "src/client/java/io/github/westernbear/celerant/client/VrmRig.java": {
+    "mtime": 1786147456.068148,
+    "ast_hash": "b145cf7414692d168cded75f42262d5c",
+    "semantic_hash": ""
+  },
+  "src/client/java/io/github/westernbear/celerant/client/mixin/AvatarRendererMixin.java": {
+    "mtime": 1785917125.4931784,
+    "ast_hash": "b8dfc0956769f5d8feb12308a4ab89da",
+    "semantic_hash": ""
+  },
+  "src/client/java/io/github/westernbear/celerant/client/mixin/LivingEntityRendererMixin.java": {
+    "mtime": 1785917125.4931784,
+    "ast_hash": "529a9a0e066bfcfc8cd5d5bb37b9f1eb",
+    "semantic_hash": ""
+  },
+  "src/client/java/io/github/westernbear/celerant/client/mixin/AvatarRendererAccessor.java": {
+    "mtime": 1786147433.6710043,
+    "ast_hash": "0f463c39ec35bce77d6e2f77fdc76b79",
     "semantic_hash": ""
   }
 }

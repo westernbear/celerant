@@ -6,7 +6,7 @@ Minecraft 26.2 Fabric 클라이언트에서 MCglTF로 로컬 VRM 0.x/1.0 모델�
 
 - Fabric Loader 0.19.3+
 - Fabric API 0.156.0+26.2
-- [MCglTF 26.2-Fabric-2.3.0.0](https://github.com/westernbear/MCglTF-1.20.4/releases)
+- [MCglTF 26.2-Fabric-2.3.1.0](https://github.com/westernbear/MCglTF-1.20.4/releases)
 - Iris 1.11.2+와 Iris가 요구하는 Sodium 0.9.x
 
 MCglTF와 Iris는 Celerant JAR에 포함하지 않습니다. Gradle은 MCglTF 릴리스 태그를 JitPack에서 빌드 의존성으로 사용합니다.
@@ -15,10 +15,17 @@ MCglTF와 Iris는 Celerant JAR에 포함하지 않습니다. Gradle은 MCglTF �
 
 1. self-contained GLB 형식의 `.vrm` 파일을 `.minecraft/celerant/models/`에 둡니다.
 2. 월드에서 `/celerant vrm load <파일명>`을 실행합니다.
-3. `/celerant vrm here`, `/celerant vrm scale <값>`, `/celerant vrm expression <이름> <0..1>`로 조정합니다.
-4. `/celerant vrm info` 또는 `/celerant vrm unload`를 사용합니다.
+3. 배치 모델은 `/celerant vrm here`, `/celerant vrm scale <값>`, `/celerant vrm expression <이름> <0..1>`로 조정합니다.
+4. 로컬 플레이어를 교체하려면 `/celerant vrm avatar true`를 실행합니다. `/celerant vrm avatar false`로 해제합니다.
+5. `/celerant vrm info` 또는 `/celerant vrm unload`를 사용합니다.
 
 로더는 디렉터리 탈출, 심볼릭 링크 탈출, 256 MiB 초과 파일, 외부 참조가 필요한 glTF를 거부합니다.
+
+아바타 모드는 1인칭과 3인칭에서 같은 VRM을 사용합니다. VRM first-person annotation으로 머리 메시를 가리고, Minecraft `PlayerModel`의 시선·대기·걷기/달리기·공격/아이템·웅크리기·탑승·수영·겉날개 자세를 humanoid rig에 매 프레임 전달합니다. 일반 점프는 실제 수직 속도에 따라 상승과 하강 관절 포즈를 따로 합성합니다. 최소 `hips`, `spine`, `head`, 양쪽 upper/lower arm·hand, upper/lower leg·foot 15개 관절과 올바른 부모 계층이 필요합니다.
+
+유효한 비영점 VRM0 `firstPersonBoneOffset`은 1인칭 카메라 anchor로 사용하며, 0 또는 누락 값은 Minecraft 눈 위치로 안전하게 폴백합니다.
+
+현재 교체 대상은 로컬 플레이어입니다. 다른 플레이어의 VRM 네트워크 동기화, IK/VR 트래커, spring-bone 물리는 포함하지 않습니다. vanilla 장비·손 아이템·망토·겉날개 렌더 레이어도 중복 메시를 피하기 위해 아바타 모드에서 숨기지만 해당 자세는 VRM rig에 반영됩니다.
 
 ## ShaderPack 경계
 
@@ -42,7 +49,7 @@ xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runClientGameTest --offline
 
 테스트용 VRM과 ShaderPack은 실행 디렉터리에 동적으로 생성되며 배포 JAR에는 포함되지 않습니다.
 
-로컬 VRM의 햇빛 카툰 렌더링은 환경변수로 모델을 지정해 아침(1000), 정오(6000), 해질녘(12500), 밤(18000) 네 시각에서 캡처할 수 있습니다.
+로컬 VRM의 햇빛 카툰 렌더링은 환경변수로 모델을 지정해 아침(0), 정오(6000), 해질녘(12500), 밤(18000) 네 시각의 전·후면, 1인칭, 보행과 점프 상승/하강 관절 프레임을 1280×720으로 캡처할 수 있습니다.
 
 ```bash
 CELERANT_VISUAL_VRM=/absolute/path/model.vrm \

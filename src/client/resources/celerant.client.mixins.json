@@ -3,6 +3,9 @@
 	"package": "io.github.westernbear.celerant.client.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"client": [
+		"AvatarRendererAccessor",
+		"AvatarRendererMixin",
+		"LivingEntityRendererMixin",
 		"IrisTransformPatcherMixin"
 	],
 	"injectors": {

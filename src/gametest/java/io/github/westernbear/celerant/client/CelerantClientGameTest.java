@@ -26,6 +26,7 @@ import net.irisshaders.iris.gl.blending.AlphaTest;
 import net.irisshaders.iris.gl.state.ShaderAttributeInputs;
 import net.irisshaders.iris.pipeline.transform.PatchShaderType;
 import net.irisshaders.iris.pipeline.transform.TransformPatcher;
+import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.client.gui.screens.ChatScreen;
@@ -161,6 +162,8 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		Path morphed = context.takeScreenshot("celerant-vrm-morphed");
 		verifyRenderedScreenshots(base, morphed);
 
+		testAvatarFlow(context);
+
 		sendCommand(context, "celerant vrm unload", "VRM unloaded");
 		require("VRM: not loaded".equals(context.computeOnClient(client -> VrmRuntime.getInstance().info())),
 			"unload command must release the model");
@@ -169,6 +172,82 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		sendCommand(context, "celerant vrm load minimal.vrm", "Loading VRM asynchronously");
 		context.waitFor(client -> !VrmRuntime.getInstance().isLoading()
 			&& VrmRuntime.getInstance().info().contains("VRM: minimal.vrm"), 1200);
+	}
+
+	private static void testAvatarFlow(ClientGameTestContext context) {
+		sendCommand(context, "celerant vrm scale 1", "VRM scale set to 1.0");
+		sendCommand(context, "celerant vrm avatar true", "VRM avatar enabled");
+		assertInfoContains(context, "avatar on");
+		assertInfoContains(context, "rig 15");
+
+		try {
+			setCamera(context, CameraType.THIRD_PERSON_BACK);
+			context.waitTicks(10);
+			assertMagenta(context.takeScreenshot("celerant-avatar-third-back"),
+				"third-person back VRM must be visible");
+
+			setCamera(context, CameraType.THIRD_PERSON_FRONT);
+			context.waitTicks(10);
+			Path idleAvatar = context.takeScreenshot("celerant-avatar-third-front");
+			assertMagenta(idleAvatar, "third-person front VRM must be visible");
+
+			float[] idleLeg = context.computeOnClient(client ->
+				VrmRuntime.getInstance().debugBoneRotation("leftUpperLeg"));
+			context.getInput().holdKey(options -> options.keyUp);
+			float[] walkingLeg;
+			Path walkingAvatar;
+			try {
+				context.waitTicks(8);
+				walkingLeg = context.computeOnClient(client ->
+					VrmRuntime.getInstance().debugBoneRotation("leftUpperLeg"));
+				walkingAvatar = context.takeScreenshot("celerant-avatar-third-front-walking");
+			} finally {
+				context.getInput().releaseKey(options -> options.keyUp);
+			}
+			require(quaternionDistance(idleLeg, walkingLeg) > 0.01F,
+				"walking input must animate the VRM left upper leg");
+			assertMagentaMasksDiffer(idleAvatar, walkingAvatar,
+				"walking must visibly deform the skinned VRM");
+
+			context.getInput().holdKey(options -> options.keyJump);
+			float[] risingLeg;
+			Path risingAvatar;
+			try {
+				context.waitFor(client -> client.player != null && !client.player.onGround()
+					&& client.player.getDeltaMovement().y > 0.20, 100);
+				context.waitTicks(1);
+				risingLeg = context.computeOnClient(client ->
+					VrmRuntime.getInstance().debugBoneRotation("leftUpperLeg"));
+				risingAvatar = context.takeScreenshot("celerant-avatar-jump-rising");
+			} finally {
+				context.getInput().releaseKey(options -> options.keyJump);
+			}
+			context.waitFor(client -> client.player != null && !client.player.onGround()
+				&& client.player.getDeltaMovement().y < -0.20, 100);
+			context.waitTicks(1);
+			float[] fallingLeg = context.computeOnClient(client ->
+				VrmRuntime.getInstance().debugBoneRotation("leftUpperLeg"));
+			Path fallingAvatar = context.takeScreenshot("celerant-avatar-jump-falling");
+			require(quaternionDistance(risingLeg, fallingLeg) > 0.01F,
+				"rising and falling must use distinct VRM leg poses");
+			assertMagentaMasksDiffer(risingAvatar, fallingAvatar,
+				"rising and falling must visibly deform the skinned VRM differently");
+			context.waitFor(client -> client.player != null && client.player.onGround(), 200);
+
+			setCamera(context, CameraType.FIRST_PERSON);
+			context.getInput().lookAt(180.0F, 70.0F);
+			context.waitTicks(10);
+			Path firstPersonAvatar = context.takeScreenshot("celerant-avatar-first-person");
+			assertAutoHeadFiltered(idleAvatar, firstPersonAvatar);
+		} finally {
+			sendCommand(context, "celerant vrm avatar false", "VRM avatar disabled");
+			setCamera(context, CameraType.FIRST_PERSON);
+		}
+	}
+
+	private static void setCamera(ClientGameTestContext context, CameraType cameraType) {
+		context.runOnClient(client -> client.options.setCameraType(cameraType));
+		context.waitFor(client -> client.options.getCameraType() == cameraType, 100);
 	}
 
 	private static void testLocalVisualFlow(ClientGameTestContext context, TestSingleplayerContext world,
@@ -180,28 +259,92 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 
 		double y = context.computeOnClient(client -> client.player.getY());
 		teleport(context, world, connection, 0.0, y, 0.0);
-		sendCommand(context, "celerant vrm here", "VRM position set to your current position");
-		sendCommand(context, "celerant vrm scale 1.5", "VRM scale set to 1.5");
+		sendCommand(context, "celerant vrm scale 1", "VRM scale set to 1.0");
+		sendCommand(context, "celerant vrm avatar true", "VRM avatar enabled");
 		teleport(context, world, connection, 0.0, y, 4.0);
-		context.getInput().lookAt(BlockPos.containing(0.0, y + 1.25, 0.0));
+		context.getInput().lookAt(180.0F, 8.0F);
+		setCamera(context, CameraType.THIRD_PERSON_FRONT);
+		int previousFov = context.computeOnClient(client -> client.options.fov().get());
+		int previousWidth = context.computeOnClient(client -> client.getWindow().getWidth());
+		int previousHeight = context.computeOnClient(client -> client.getWindow().getHeight());
+		context.getInput().resizeWindow(1280, 720);
+		context.waitFor(client -> client.getWindow().getWidth() == 1280
+			&& client.getWindow().getHeight() == 720, 100);
+		context.runOnClient(client -> client.options.fov().set(30));
+		context.waitFor(client -> client.options.fov().get() == 30, 100);
 
 		String[] names = {"morning", "noon", "sunset", "night"};
-		int[] times = {1000, 6000, 12500, 18000};
+		int[] times = {0, 6000, 12500, 18000};
 		context.getInput().pressKey(options -> options.keyToggleGui);
 		try {
 			for (int index = 0; index < names.length; index++) {
 				world.getServer().runCommand("time set " + times[index]);
 				connection.waitForClientboundPackets();
 				context.waitTicks(30);
-				Path screenshot = context.takeScreenshot("celerant-local-vrm-" + names[index]);
-				try {
-					require(Files.size(screenshot) > 0, "local VRM screenshot must not be empty");
-				} catch (IOException exception) {
-					throw new AssertionError("could not inspect local VRM screenshot", exception);
-				}
-				System.out.println("[Celerant visual test] " + screenshot);
+				Path front = context.takeScreenshot("celerant-local-avatar-" + names[index] + "-front");
+				assertNonEmpty(front, "local VRM front screenshot must not be empty");
+				System.out.println("[Celerant visual test] " + front);
+				setCamera(context, CameraType.THIRD_PERSON_BACK);
+				context.waitTicks(10);
+				Path back = context.takeScreenshot("celerant-local-avatar-" + names[index] + "-back");
+				assertNonEmpty(back, "local VRM back screenshot must not be empty");
+				System.out.println("[Celerant visual test] " + back);
+				setCamera(context, CameraType.THIRD_PERSON_FRONT);
 			}
+
+			context.runOnClient(client -> client.options.fov().set(50));
+			context.waitFor(client -> client.options.fov().get() == 50, 100);
+			world.getServer().runCommand("time set 6000");
+			connection.waitForClientboundPackets();
+			context.waitTicks(20);
+			Path idle = context.takeScreenshot("celerant-local-avatar-noon-walk-idle");
+			context.getInput().holdKey(options -> options.keyUp);
+			Path walking;
+			try {
+				context.waitTicks(8);
+				walking = context.takeScreenshot("celerant-local-avatar-noon-walk-moving");
+			} finally {
+				context.getInput().releaseKey(options -> options.keyUp);
+			}
+			assertNonEmpty(idle, "local idle screenshot must not be empty");
+			assertNonEmpty(walking, "local walking screenshot must not be empty");
+			System.out.println("[Celerant visual test] " + idle);
+			System.out.println("[Celerant visual test] " + walking);
+			context.waitTicks(10);
+
+			context.getInput().holdKey(options -> options.keyJump);
+			Path rising;
+			try {
+				context.waitFor(client -> client.player != null && !client.player.onGround()
+					&& client.player.getDeltaMovement().y > 0.20, 100);
+				context.waitTicks(1);
+				rising = context.takeScreenshot("celerant-local-avatar-noon-jump-rising");
+			} finally {
+				context.getInput().releaseKey(options -> options.keyJump);
+			}
+			context.waitFor(client -> client.player != null && !client.player.onGround()
+				&& client.player.getDeltaMovement().y < -0.20, 100);
+			context.waitTicks(1);
+			Path falling = context.takeScreenshot("celerant-local-avatar-noon-jump-falling");
+			assertNonEmpty(rising, "local rising screenshot must not be empty");
+			assertNonEmpty(falling, "local falling screenshot must not be empty");
+			System.out.println("[Celerant visual test] " + rising);
+			System.out.println("[Celerant visual test] " + falling);
+			context.waitFor(client -> client.player != null && client.player.onGround(), 200);
+
+			context.runOnClient(client -> client.options.fov().set(previousFov));
+			context.waitFor(client -> client.options.fov().get() == previousFov, 100);
+			setCamera(context, CameraType.FIRST_PERSON);
+			context.getInput().lookAt(180.0F, 45.0F);
+			context.waitTicks(20);
+			Path firstPerson = context.takeScreenshot("celerant-local-avatar-noon-first-person");
+			assertNonEmpty(firstPerson, "local first-person screenshot must not be empty");
+			System.out.println("[Celerant visual test] " + firstPerson);
 		} finally {
+			sendCommand(context, "celerant vrm avatar false", "VRM avatar disabled");
+			setCamera(context, CameraType.FIRST_PERSON);
+			context.runOnClient(client -> client.options.fov().set(previousFov));
+			context.getInput().resizeWindow(previousWidth, previousHeight);
 			context.getInput().pressKey(options -> options.keyToggleGui);
 		}
 	}
@@ -306,11 +449,129 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		}
 	}
 
+	private static void assertMagenta(Path screenshot, String message) {
+		try (NativeImage image = NativeImage.read(Files.newInputStream(screenshot))) {
+			long magentaPixels = Arrays.stream(image.getPixels())
+				.filter(CelerantClientGameTest::isMagenta)
+				.count();
+			require(magentaPixels >= 50, message + " (pixels=" + magentaPixels + ")");
+		} catch (IOException exception) {
+			throw new AssertionError("could not inspect avatar screenshot", exception);
+		}
+	}
+
+	private static void assertNonEmpty(Path screenshot, String message) {
+		try {
+			require(Files.size(screenshot) > 0, message);
+		} catch (IOException exception) {
+			throw new AssertionError("could not inspect screenshot", exception);
+		}
+	}
+
+	private static void assertAutoHeadFiltered(Path thirdPersonPath, Path firstPersonPath) {
+		try (NativeImage thirdPerson = NativeImage.read(Files.newInputStream(thirdPersonPath));
+			 NativeImage firstPerson = NativeImage.read(Files.newInputStream(firstPersonPath))) {
+			long thirdPersonBody = Arrays.stream(thirdPerson.getPixels())
+				.filter(CelerantClientGameTest::isBodyMagenta).count();
+			long thirdPersonHead = Arrays.stream(thirdPerson.getPixels())
+				.filter(CelerantClientGameTest::isHeadMagenta).count();
+			long firstPersonBody = Arrays.stream(firstPerson.getPixels())
+				.filter(CelerantClientGameTest::isBodyMagenta).count();
+			long firstPersonHead = Arrays.stream(firstPerson.getPixels())
+				.filter(CelerantClientGameTest::isHeadMagenta).count();
+			require(thirdPersonBody >= 50, "third-person VRM body must be visible");
+			require(thirdPersonHead >= 50, "third-person VRM head must be visible");
+			require(firstPersonBody >= 50, "first-person VRM body must remain visible");
+			require(firstPersonHead == 0,
+				"first-person Auto filtering must remove head-weighted geometry (pixels=" + firstPersonHead + ")");
+		} catch (IOException exception) {
+			throw new AssertionError("could not inspect first-person Auto filtering screenshots", exception);
+		}
+	}
+
+	private static void assertMagentaMasksDiffer(Path firstPath, Path secondPath, String message) {
+		try (NativeImage first = NativeImage.read(Files.newInputStream(firstPath));
+			 NativeImage second = NativeImage.read(Files.newInputStream(secondPath))) {
+			require(first.getWidth() == second.getWidth() && first.getHeight() == second.getHeight(),
+				"screenshots must use the same viewport");
+			int width = first.getWidth();
+			int height = first.getHeight();
+			int[] firstPixels = first.getPixels();
+			int[] secondPixels = second.getPixels();
+			int firstMinX = width;
+			int firstMinY = height;
+			int firstMaxX = -1;
+			int firstMaxY = -1;
+			int secondMinX = width;
+			int secondMinY = height;
+			int secondMaxX = -1;
+			int secondMaxY = -1;
+			for (int index = 0; index < firstPixels.length; index++) {
+				int x = index % width;
+				int y = index / width;
+				if (isMagenta(firstPixels[index])) {
+					firstMinX = Math.min(firstMinX, x);
+					firstMinY = Math.min(firstMinY, y);
+					firstMaxX = Math.max(firstMaxX, x);
+					firstMaxY = Math.max(firstMaxY, y);
+				}
+				if (isMagenta(secondPixels[index])) {
+					secondMinX = Math.min(secondMinX, x);
+					secondMinY = Math.min(secondMinY, y);
+					secondMaxX = Math.max(secondMaxX, x);
+					secondMaxY = Math.max(secondMaxY, y);
+				}
+			}
+			require(firstMaxX >= firstMinX && secondMaxX >= secondMinX,
+				"both screenshots must contain the magenta VRM");
+			int maskWidth = Math.max(firstMaxX - firstMinX, secondMaxX - secondMinX) + 1;
+			int maskHeight = Math.max(firstMaxY - firstMinY, secondMaxY - secondMinY) + 1;
+			int changed = 0;
+			for (int y = 0; y < maskHeight; y++) {
+				for (int x = 0; x < maskWidth; x++) {
+					boolean firstMagenta = x <= firstMaxX - firstMinX && y <= firstMaxY - firstMinY
+						&& isMagenta(firstPixels[(firstMinY + y) * width + firstMinX + x]);
+					boolean secondMagenta = x <= secondMaxX - secondMinX && y <= secondMaxY - secondMinY
+						&& isMagenta(secondPixels[(secondMinY + y) * width + secondMinX + x]);
+					changed += firstMagenta == secondMagenta ? 0 : 1;
+				}
+			}
+			require(changed >= 100, message + " (mask pixels=" + changed + ")");
+		} catch (IOException exception) {
+			throw new AssertionError("could not inspect avatar masks", exception);
+		}
+	}
+
+	private static float quaternionDistance(float[] first, float[] second) {
+		require(first != null && second != null && first.length == 4 && second.length == 4,
+			"debug bone rotations must be quaternions");
+		float direct = 0.0F;
+		float negated = 0.0F;
+		for (int index = 0; index < 4; index++) {
+			direct += Math.abs(first[index] - second[index]);
+			negated += Math.abs(first[index] + second[index]);
+		}
+		return Math.min(direct, negated);
+	}
+
 	private static boolean isMagenta(int pixel) {
 		int blue = pixel & 0xFF;
 		int green = pixel >>> 8 & 0xFF;
 		int red = pixel >>> 16 & 0xFF;
 		return red >= 55 && green <= 60 && blue >= 75;
+	}
+
+	private static boolean isBodyMagenta(int pixel) {
+		int blue = pixel & 0xFF;
+		int red = pixel >>> 16 & 0xFF;
+		return isMagenta(pixel) && red - blue >= 30;
+	}
+
+	private static boolean isHeadMagenta(int pixel) {
+		int blue = pixel & 0xFF;
+		int green = pixel >>> 8 & 0xFF;
+		int red = pixel >>> 16 & 0xFF;
+		return isMagenta(pixel) && green < 30 && Math.abs(red - blue) <= 12;
 	}
 
 	private static void writeFixtures(Path packRoot, Path modelPath) {
@@ -365,16 +626,46 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 	}
 
 	private static byte[] createMinimalVrm() {
-		ByteBuffer binary = ByteBuffer.allocate(140).order(ByteOrder.LITTLE_ENDIAN);
-		putFloats(binary, -0.75F, 0.0F, 0.0F, 0.75F, 0.0F, 0.0F, 0.0F, 1.5F, 0.0F);
-		putFloats(binary, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 1.0F);
-		putFloats(binary, 0.0F, 0.0F, 1.0F, 0.0F, 0.5F, 1.0F);
-		putFloats(binary, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.75F, 0.0F);
+		ByteBuffer binary = ByteBuffer.allocate(660).order(ByteOrder.LITTLE_ENDIAN);
+		putFloats(binary,
+			-0.75F, 0.0F, 0.35F, 0.75F, 0.0F, 0.35F, 0.0F, 1.5F, 0.35F,
+			-0.4F, 1.2F, 0.34F, 0.4F, 1.2F, 0.34F, 0.4F, 2.1F, 0.34F, -0.4F, 2.1F, 0.34F);
+		for (int vertex = 0; vertex < 7; vertex++) {
+			putFloats(binary, 0.0F, 0.0F, 1.0F);
+		}
+		putFloats(binary,
+			0.0F, 0.0F, 1.0F, 0.0F, 0.5F, 1.0F,
+			0.0F, 0.0F, 1.0F, 0.0F, 1.0F, 1.0F, 0.0F, 0.0F);
+		putFloats(binary,
+			0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.75F, 0.0F,
+			0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F);
 		binary.putShort((short) 0).putShort((short) 1).putShort((short) 2);
-		int dataLength = binary.position();
+		binary.putShort((short) 3).putShort((short) 4).putShort((short) 5);
+		binary.putShort((short) 3).putShort((short) 5).putShort((short) 6);
 		while ((binary.position() & 3) != 0) {
 			binary.put((byte) 0);
 		}
+		putFloats(binary,
+			1.0F, 0.0F, 0.0F, 0.0F,
+			0.0F, 1.0F, 0.0F, 0.0F,
+			0.0F, 0.0F, 1.0F, 0.0F,
+			0.0F, -0.9F, 0.0F, 1.0F,
+			1.0F, 0.0F, 0.0F, 0.0F,
+			0.0F, 1.0F, 0.0F, 0.0F,
+			0.0F, 0.0F, 1.0F, 0.0F,
+			-0.2F, -0.8F, 0.0F, 1.0F,
+			1.0F, 0.0F, 0.0F, 0.0F,
+			0.0F, 1.0F, 0.0F, 0.0F,
+			0.0F, 0.0F, 1.0F, 0.0F,
+			0.0F, -1.7F, 0.0F, 1.0F);
+		for (int joint : new int[] {1, 0, 0, 2, 2, 2, 2}) {
+			binary.put((byte) joint).put((byte) 0).put((byte) 0).put((byte) 0);
+		}
+		for (int vertex = 0; vertex < 7; vertex++) {
+			putFloats(binary, 1.0F, 0.0F, 0.0F, 0.0F);
+		}
+		int dataLength = binary.position();
+		require(dataLength == 660, "minimal VRM skin binary layout");
 		byte[] binaryChunk = Arrays.copyOf(binary.array(), binary.position());
 
 		String json = """
@@ -384,36 +675,73 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 			  "extensions":{"VRMC_vrm":{
 			    "specVersion":"1.0",
 			    "meta":{"name":"Celerant Test Avatar","version":"1.0","authors":["Celerant"],"licenseUrl":"https://vrm.dev/licenses/1.0/"},
-			    "humanoid":{"humanBones":{}},
+			    "humanoid":{"humanBones":{
+			      "hips":{"node":1},"spine":{"node":2},"head":{"node":3},
+			      "leftUpperLeg":{"node":4},"leftLowerLeg":{"node":5},"leftFoot":{"node":6},
+			      "rightUpperLeg":{"node":7},"rightLowerLeg":{"node":8},"rightFoot":{"node":9},
+			      "leftUpperArm":{"node":10},"leftLowerArm":{"node":11},"leftHand":{"node":12},
+			      "rightUpperArm":{"node":13},"rightLowerArm":{"node":14},"rightHand":{"node":15}
+			    }},
+			    "firstPerson":{"meshAnnotations":[{"node":0,"type":"auto"}]},
 			    "expressions":{"custom":{
 			      "smile":{"morphTargetBinds":[{"node":0,"index":0,"weight":1.0}]},
 			      "blink":{"isBinary":true,"morphTargetBinds":[{"node":0,"index":0,"weight":1.0}]}
 			    }}
 			  }},
 			  "scene":0,
-			  "scenes":[{"nodes":[0]}],
-			  "nodes":[{"mesh":0,"name":"Avatar"}],
-			  "meshes":[{"weights":[0.0],"primitives":[{
-			    "attributes":{"POSITION":0,"NORMAL":1,"TEXCOORD_0":2},
-			    "targets":[{"POSITION":3}],"indices":4,"material":0
-			  }]}],
+			  "scenes":[{"nodes":[0,1]}],
+			  "nodes":[
+			    {"mesh":0,"skin":0,"name":"Avatar"},
+			    {"name":"hips","children":[2,4,7],"translation":[0.0,0.9,0.0]},
+			    {"name":"spine","children":[3,10,13],"translation":[0.0,0.3,0.0]},
+			    {"name":"head","translation":[0.0,0.5,0.0]},
+			    {"name":"leftUpperLeg","children":[5],"translation":[0.2,-0.1,0.0]},
+			    {"name":"leftLowerLeg","children":[6],"translation":[0.0,-0.45,0.0]},
+			    {"name":"leftFoot","translation":[0.0,-0.45,0.0]},
+			    {"name":"rightUpperLeg","children":[8],"translation":[-0.2,-0.1,0.0]},
+			    {"name":"rightLowerLeg","children":[9],"translation":[0.0,-0.45,0.0]},
+			    {"name":"rightFoot","translation":[0.0,-0.45,0.0]},
+			    {"name":"leftUpperArm","children":[11],"translation":[0.25,0.35,0.0]},
+			    {"name":"leftLowerArm","children":[12],"translation":[0.45,0.0,0.0]},
+			    {"name":"leftHand","translation":[0.4,0.0,0.0]},
+			    {"name":"rightUpperArm","children":[14],"translation":[-0.25,0.35,0.0]},
+			    {"name":"rightLowerArm","children":[15],"translation":[-0.45,0.0,0.0]},
+			    {"name":"rightHand","translation":[-0.4,0.0,0.0]}
+			  ],
+			  "skins":[{"joints":[1,4,3],"skeleton":1,"inverseBindMatrices":8}],
+			  "meshes":[{"weights":[0.0],"primitives":[
+			    {"attributes":{"POSITION":0,"NORMAL":1,"TEXCOORD_0":2,"JOINTS_0":6,"WEIGHTS_0":7},
+			     "targets":[{"POSITION":3}],"indices":4,"material":0},
+			    {"attributes":{"POSITION":0,"NORMAL":1,"TEXCOORD_0":2,"JOINTS_0":6,"WEIGHTS_0":7},
+			     "targets":[{"POSITION":3}],"indices":5,"material":1}
+			  ]}],
 			  "materials":[{"doubleSided":true,"pbrMetallicRoughness":{
 			    "baseColorFactor":[1.0,0.05,0.55,1.0],"metallicFactor":0.0,"roughnessFactor":1.0
+			  }},{"doubleSided":true,"pbrMetallicRoughness":{
+			    "baseColorFactor":[1.0,0.0,1.0,1.0],"metallicFactor":0.0,"roughnessFactor":1.0
 			  }}],
 			  "buffers":[{"byteLength":%d}],
 			  "bufferViews":[
-			    {"buffer":0,"byteOffset":0,"byteLength":36,"target":34962},
-			    {"buffer":0,"byteOffset":36,"byteLength":36,"target":34962},
-			    {"buffer":0,"byteOffset":72,"byteLength":24,"target":34962},
-			    {"buffer":0,"byteOffset":96,"byteLength":36,"target":34962},
-			    {"buffer":0,"byteOffset":132,"byteLength":6,"target":34963}
+			    {"buffer":0,"byteOffset":0,"byteLength":84,"target":34962},
+			    {"buffer":0,"byteOffset":84,"byteLength":84,"target":34962},
+			    {"buffer":0,"byteOffset":168,"byteLength":56,"target":34962},
+			    {"buffer":0,"byteOffset":224,"byteLength":84,"target":34962},
+			    {"buffer":0,"byteOffset":308,"byteLength":6,"target":34963},
+			    {"buffer":0,"byteOffset":314,"byteLength":12,"target":34963},
+			    {"buffer":0,"byteOffset":328,"byteLength":192},
+			    {"buffer":0,"byteOffset":520,"byteLength":28,"target":34962},
+			    {"buffer":0,"byteOffset":548,"byteLength":112,"target":34962}
 			  ],
 			  "accessors":[
-			    {"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[-0.75,0.0,0.0],"max":[0.75,1.5,0.0]},
-			    {"bufferView":1,"componentType":5126,"count":3,"type":"VEC3"},
-			    {"bufferView":2,"componentType":5126,"count":3,"type":"VEC2"},
-			    {"bufferView":3,"componentType":5126,"count":3,"type":"VEC3"},
-			    {"bufferView":4,"componentType":5123,"count":3,"type":"SCALAR","min":[0],"max":[2]}
+			    {"bufferView":0,"componentType":5126,"count":7,"type":"VEC3","min":[-0.75,0.0,0.34],"max":[0.75,2.1,0.35]},
+			    {"bufferView":1,"componentType":5126,"count":7,"type":"VEC3"},
+			    {"bufferView":2,"componentType":5126,"count":7,"type":"VEC2"},
+			    {"bufferView":3,"componentType":5126,"count":7,"type":"VEC3"},
+			    {"bufferView":4,"componentType":5123,"count":3,"type":"SCALAR","min":[0],"max":[2]},
+			    {"bufferView":5,"componentType":5123,"count":6,"type":"SCALAR","min":[3],"max":[6]},
+			    {"bufferView":7,"componentType":5121,"count":7,"type":"VEC4"},
+			    {"bufferView":8,"componentType":5126,"count":7,"type":"VEC4"},
+			    {"bufferView":6,"componentType":5126,"count":3,"type":"MAT4"}
 			  ]
 			}
 			""".formatted(dataLength);
