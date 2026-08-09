@@ -57,7 +57,6 @@ dependencies {
 	compileOnly "maven.modrinth:iris:${project.iris_version}"
 	runtimeOnly "maven.modrinth:iris:${project.iris_version}"
 	runtimeOnly "net.caffeinemc:sodium-fabric:${project.sodium_version}"
-	compileOnly "io.github.douira:glsl-transformer:3.0.0-pre3"
 	// OneConfig 1.1.6 ships its API modules nested; the public descriptors used here match 1.1.4.
 	compileOnly("org.polyfrost.oneconfig:26.2-fabric:${project.oneconfig_api_version}") { transitive = false }
 	compileOnly("org.polyfrost.oneconfig:config:${project.oneconfig_api_version}") { transitive = false }
@@ -91,16 +90,8 @@ tasks.register("vrmSelfCheck", JavaExec) {
 	enableAssertions = true
 }
 
-tasks.register("toonSelfCheck", JavaExec) {
-	group = "verification"
-	dependsOn tasks.named("compileClientJava")
-	classpath = clientCheckClasspath
-	mainClass = "io.github.westernbear.celerant.client.iris.IrisToonPatcher"
-	enableAssertions = true
-}
-
 tasks.named("check") {
-	dependsOn tasks.named("vrmSelfCheck"), tasks.named("toonSelfCheck")
+	dependsOn tasks.named("vrmSelfCheck")
 }
 
 java {

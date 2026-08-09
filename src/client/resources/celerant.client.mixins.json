@@ -6,7 +6,8 @@
 		"AvatarRendererAccessor",
 		"AvatarRendererMixin",
 		"LivingEntityRendererMixin",
-		"IrisTransformPatcherMixin"
+		"IrisFinalPassMixin",
+		"ToonShaderProjectionMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

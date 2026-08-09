@@ -44,6 +44,7 @@ import de.javagl.jgltf.model.NodeModel;
 import de.javagl.jgltf.model.impl.DefaultNodeModel;
 import de.javagl.jgltf.model.io.GltfModelReader;
 import io.github.westernbear.celerant.Celerant;
+import io.github.westernbear.celerant.client.toon.ToonShader;
 import io.github.westernbear.celerant.client.mixin.AvatarRendererAccessor;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
@@ -65,11 +66,9 @@ public final class VrmRuntime {
 	private static final int MAX_BYTES = 256 * 1024 * 1024;
 	private static final int GLB_MAGIC = 0x46546C67;
 	private static final int GLB_JSON = 0x4E4F534A;
-	private static final int VRM_OVERLAY = OverlayTexture.pack(OverlayTexture.NO_WHITE_U, 15);
 	private static final Set<String> SUPPORTED_REQUIRED_EXTENSIONS = Set.of(
 		"VRM",
 		"VRMC_vrm",
-		// ponytail: one model-wide NPR pass; add a per-primitive material channel for full MToon fidelity.
 		"VRMC_materials_mtoon",
 		"KHR_materials_unlit",
 		"KHR_mesh_quantization"
@@ -295,7 +294,7 @@ public final class VrmRuntime {
 				poseStack.mulPose(Axis.YP.rotationDegrees(180.0F));
 			}
 			poseStack.scale(scale, scale, scale);
-			model.submit(sceneIndex, poseStack, context.submitNodeCollector(), light, VRM_OVERLAY);
+			model.submit(sceneIndex, poseStack, context.submitNodeCollector(), light, vrmOverlay());
 		} finally {
 			poseStack.popPose();
 		}
@@ -360,7 +359,7 @@ public final class VrmRuntime {
 			if (anchor != null) {
 				poseStack.translate(-anchor[0], -anchor[1], -anchor[2]);
 			}
-			model.submit(sceneIndex, poseStack, collector, state.lightCoords, VRM_OVERLAY, view);
+			model.submit(sceneIndex, poseStack, collector, state.lightCoords, vrmOverlay(), view);
 		} finally {
 			poseStack.popPose();
 			rig.restore();
@@ -388,7 +387,8 @@ public final class VrmRuntime {
 		RenderedGltfModel newModel;
 		VrmRig newRig;
 		try {
-			newModel = new RenderedGltfModel(newCleanup, parsed.gltfModel());
+			Path sidecar = parsed.path().resolveSibling(parsed.path().getFileName() + ".toon.json");
+			newModel = new RenderedGltfModel(newCleanup, parsed.gltfModel(), sidecar);
 			newRig = VrmRig.create(parsed.gltfModel(), parsed.humanoid());
 		} catch (RuntimeException exception) {
 			runCleanup(newCleanup);
@@ -1065,7 +1065,18 @@ public final class VrmRuntime {
 		return true;
 	}
 
+	private static int vrmOverlay() {
+		return ToonShader.isEnabled()
+			? RenderedGltfModel.MTOON_OVERLAY_REQUEST : OverlayTexture.NO_OVERLAY;
+	}
+
 	static void selfCheck() throws IOException {
+		boolean toonEnabled = ToonShader.isEnabled();
+		ToonShader.setEnabled(false);
+		require(vrmOverlay() == OverlayTexture.NO_OVERLAY, "disabled toon overlay");
+		ToonShader.setEnabled(true);
+		require(vrmOverlay() == RenderedGltfModel.MTOON_OVERLAY_REQUEST, "enabled toon overlay");
+		ToonShader.setEnabled(toonEnabled);
 		RawExpressions vrm0 = parseRawExpressions(JsonParser.parseString("""
 			{"extensions":{"VRM":{"blendShapeMaster":{"blendShapeGroups":[
 			{"name":"Joy","presetName":"joy","isBinary":true,"binds":[{"mesh":2,"index":1,"weight":75}]}

@@ -1,10 +1,9 @@
 package io.github.westernbear.celerant.client;
 
-import java.io.IOException;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 
-import io.github.westernbear.celerant.client.iris.IrisToonPatcher;
+import io.github.westernbear.celerant.client.toon.ToonShader;
 import net.irisshaders.iris.Iris;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.phys.Vec3;
@@ -47,7 +46,7 @@ public final class CelerantConfig extends Config {
 	float expressionWeight = 1.0F;
 
 	@Switch(title = "Iris toon shading", category = "Rendering",
-		description = "Patch compatible Iris entity shaders in memory for VRM draws only. ShaderPack files stay unchanged.")
+		description = "Composite VRM ToonShader materials after the Iris final pass. ShaderPack files stay unchanged.")
 	boolean toonEnabled = true;
 
 	private CelerantConfig() {
@@ -65,7 +64,7 @@ public final class CelerantConfig extends Config {
 			save();
 		}
 		VrmRuntime.getInstance().setScale(scale);
-		IrisToonPatcher.setEnabled(toonEnabled);
+		ToonShader.setEnabled(toonEnabled);
 		addCallback("scale", (Float value) -> {
 			return !VrmRuntime.getInstance().setScale(value);
 		});
@@ -181,29 +180,16 @@ public final class CelerantConfig extends Config {
 	}
 
 	@Button(title = "Runtime status", category = "Interface", text = "Show",
-		description = "Show model, rig, expression, Iris ShaderPack, and toon patch state.")
+		description = "Show model, rig, expression, Iris ShaderPack, and ToonShader state.")
 	private void showStatus() {
 		String pack = Iris.isPackInUseQuick() ? Iris.getCurrentPackName() : "disabled";
 		Notifications.info("Celerant status", VrmRuntime.getInstance().info() + "\nIris: " + pack
-			+ ", toon: " + (IrisToonPatcher.isEnabled() ? "on" : "off"));
+			+ ", toon: " + (ToonShader.isEnabled() ? "on" : "off"));
 	}
 
 	private boolean setToonEnabled(Boolean enabled) {
-		boolean previous = IrisToonPatcher.isEnabled();
-		IrisToonPatcher.setEnabled(enabled);
-		try {
-			if (Iris.getPipelineManager().getPipeline().isPresent()) {
-				Iris.reload();
-				Notifications.info("Celerant rendering", "Reloading the active ShaderPack with toon shading "
-					+ (enabled ? "enabled." : "disabled."));
-			} else {
-				Notifications.success("Celerant rendering", "Toon shading " + (enabled ? "enabled." : "disabled."));
-			}
-			return false;
-		} catch (IOException exception) {
-			IrisToonPatcher.setEnabled(previous);
-			Notifications.error("Celerant rendering", "Could not reload Iris: " + exception.getMessage());
-			return true;
-		}
+		ToonShader.setEnabled(enabled);
+		Notifications.success("Celerant rendering", "Toon shading " + (enabled ? "enabled." : "disabled."));
+		return false;
 	}
 }

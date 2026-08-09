@@ -28,7 +28,7 @@ import javax.imageio.ImageIO;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.NativeImage;
 
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import io.github.westernbear.celerant.client.toon.ToonShader;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.TestInput;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
@@ -38,10 +38,6 @@ import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.irisshaders.iris.Iris;
-import net.irisshaders.iris.gl.blending.AlphaTest;
-import net.irisshaders.iris.gl.state.ShaderAttributeInputs;
-import net.irisshaders.iris.pipeline.transform.PatchShaderType;
-import net.irisshaders.iris.pipeline.transform.TransformPatcher;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.ChatComponent;
@@ -57,7 +53,7 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 	private static final String ONECONFIG_SCREEN =
 		"org.polyfrost.oneconfig.internal.ui.compose.impls.OneConfigUIScreen";
 	private static final String LOCAL_VISUAL_VRM = "_local_visual.vrm";
-	private static final String DISABLE_TOON_PATCH_PROPERTY = "celerant.testing.disableToonPatch";
+	private static final String DISABLE_TOON_SHADER_PROPERTY = "celerant.testing.disableToonShader";
 	private static final FrameTimeRecorder MATRIX_FRAME_TIMES = new FrameTimeRecorder();
 	private static boolean matrixFrameRecorderRegistered;
 	private static volatile Path nextOneConfigFileSelection;
@@ -67,13 +63,11 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		varying vec2 texcoord;
 		varying vec2 lmcoord;
 		varying vec4 tint;
-		varying vec3 normal;
 		void main() {
 		    gl_Position = ftransform();
 		    texcoord = (gl_TextureMatrix[0] * gl_MultiTexCoord0).xy;
 		    lmcoord = (gl_TextureMatrix[1] * gl_MultiTexCoord1).xy;
 		    tint = gl_Color;
-		    normal = normalize(gl_NormalMatrix * gl_Normal);
 		}
 		""";
 	private static final String FRAGMENT_SHADER = """
@@ -83,15 +77,11 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		varying vec2 texcoord;
 		varying vec2 lmcoord;
 		varying vec4 tint;
-		varying vec3 normal;
 		void main() {
 		    vec4 albedo = texture2D(texture, texcoord) * tint;
 		    gl_FragData[0] = albedo * texture2D(lightmap, lmcoord);
 		}
 		""";
-	private static final String MULTI_OUTPUT_FRAGMENT_SHADER = FRAGMENT_SHADER.replace(
-		"gl_FragData[0] = albedo * texture2D(lightmap, lmcoord);",
-		"gl_FragData[0] = albedo * texture2D(lightmap, lmcoord);\n    gl_FragData[1] = vec4(normal * 0.5 + 0.5, 1.0);");
 
 	@Override
 	public void runTest(ClientGameTestContext context) {
@@ -107,7 +97,6 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		writeFixtures(packRoot, modelPath);
 		boolean localVisualTest = prepareLocalVisualModel(gameDirectory);
 		enableShaderPack(context, packRoot);
-		verifyIrisMixinPath();
 
 		try (TestSingleplayerContext world = context.worldBuilder().setUseConsistentSettings(true).create()) {
 			TestServerConnection connection = world.getConnection();
@@ -269,12 +258,12 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		waitForOneConfigScreen(context);
 		clickUiCategory(context, "Rendering");
 		clickUiRowControl(context, "Iris toon shading", "OnClick :");
-		context.waitFor(client -> !io.github.westernbear.celerant.client.iris.IrisToonPatcher.isEnabled()
+		context.waitFor(client -> !ToonShader.isEnabled()
 			&& Boolean.FALSE.equals(CelerantConfig.INSTANCE.getTree().getProp("toonEnabled").get())
 			&& Iris.getPipelineManager().getPipeline().isPresent() && Iris.getStoredError().isEmpty(), 1200);
 		waitForOneConfigScreen(context);
 		clickUiRowControl(context, "Iris toon shading", "OnClick :");
-		context.waitFor(client -> io.github.westernbear.celerant.client.iris.IrisToonPatcher.isEnabled()
+		context.waitFor(client -> ToonShader.isEnabled()
 			&& Boolean.TRUE.equals(CelerantConfig.INSTANCE.getTree().getProp("toonEnabled").get())
 			&& Iris.getPipelineManager().getPipeline().isPresent() && Iris.getStoredError().isEmpty(), 1200);
 
@@ -723,7 +712,7 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		context.getInput().lookAt(BlockPos.containing(0.0, y + 1.5, 0.0));
 		context.waitTicks(20);
 		sendCommand(context, "celerant vrm info", "VRM: minimal.vrm");
-		verifyRuntimeToonPatch(context, gameDirectory);
+		verifyRuntimeToonShader(context);
 
 		Path base = context.takeScreenshot("celerant-vrm-base");
 		sendCommand(context, "celerant vrm expression smile 1", "VRM expression set to smile at 1.0");
@@ -948,10 +937,9 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 			throw new AssertionError("could not list CELERANT_SHADERPACK_DIR", exception);
 		}
 
-		boolean previousToonPatch = context.computeOnClient(client ->
-			io.github.westernbear.celerant.client.iris.IrisToonPatcher.isEnabled());
+		boolean previousToonShader = context.computeOnClient(client -> ToonShader.isEnabled());
 		context.runOnClient(client -> {
-			io.github.westernbear.celerant.client.iris.IrisToonPatcher.setEnabled(true);
+			ToonShader.setEnabled(true);
 			if (!matrixFrameRecorderRegistered) {
 				LevelRenderEvents.END_MAIN.register(renderContext -> MATRIX_FRAME_TIMES.record(System.nanoTime()));
 				matrixFrameRecorderRegistered = true;
@@ -1009,7 +997,7 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 					appendMatrixRow(report, row);
 				}
 			} finally {
-				System.clearProperty(DISABLE_TOON_PATCH_PROPERTY);
+				System.clearProperty(DISABLE_TOON_SHADER_PROPERTY);
 				cleanupMatrixWorkingPacks(context, workingCopies);
 				context.runOnClient(client -> {
 					client.options.fov().set(previousFov);
@@ -1023,7 +1011,7 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 				}
 			}
 		} finally {
-			io.github.westernbear.celerant.client.iris.IrisToonPatcher.setEnabled(previousToonPatch);
+			ToonShader.setEnabled(previousToonShader);
 		}
 
 		require(rows.size() == sources.size(),
@@ -1126,10 +1114,11 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		String error = "";
 		try {
 			context.runOnClient(client -> {
+				client.setScreenAndShow(null);
 				if (toonDisabled) {
-					System.setProperty(DISABLE_TOON_PATCH_PROPERTY, "true");
+					System.setProperty(DISABLE_TOON_SHADER_PROPERTY, "true");
 				} else {
-					System.clearProperty(DISABLE_TOON_PATCH_PROPERTY);
+					System.clearProperty(DISABLE_TOON_SHADER_PROPERTY);
 				}
 				if (packName != null) {
 					Iris.getIrisConfig().setShaderPackName(packName);
@@ -1351,7 +1340,7 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		try {
 			context.runOnClient(client -> {
 				require(Iris.isValidShaderpack(packRoot), "test ShaderPack must be discoverable by Iris");
-				System.clearProperty(DISABLE_TOON_PATCH_PROPERTY);
+				System.clearProperty(DISABLE_TOON_SHADER_PROPERTY);
 				Iris.getIrisConfig().setShaderPackName(PACK_NAME);
 				Iris.getIrisConfig().setShadersEnabled(true);
 				Iris.getIrisConfig().setDebugEnabled(true);
@@ -1365,103 +1354,49 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 			&& Iris.getStoredError().isEmpty(), 1200);
 	}
 
-	private static void verifyRuntimeToonPatch(ClientGameTestContext context, Path gameDirectory) {
+	private static void verifyRuntimeToonShader(ClientGameTestContext context) {
 		Path[] screenshots = captureToonComparison(context, "celerant-vrm-toon");
-		verifyPatchedEntityShaders(gameDirectory.resolve("patched_shaders"));
 		assertToonMaterialChanged(screenshots[0], screenshots[1], screenshots[2]);
 	}
 
 	private static Path[] captureToonComparison(ClientGameTestContext context, String prefix) {
-		context.waitTicks(10);
-		Path toonOn = context.takeScreenshot(prefix + "-on");
-		Path toonOff;
-		try {
-			reloadToonPatch(context, true);
-			context.waitTicks(10);
-			toonOff = context.takeScreenshot(prefix + "-off");
-		} finally {
-			reloadToonPatch(context, false);
-			context.waitTicks(10);
-		}
-		return new Path[] {toonOn, toonOff, context.takeScreenshot(prefix + "-restored")};
-	}
-
-	private static void reloadToonPatch(ClientGameTestContext context, boolean disabled) {
-		try {
-			context.runOnClient(client -> {
-				if (disabled) {
-					System.setProperty(DISABLE_TOON_PATCH_PROPERTY, "true");
-				} else {
-					System.clearProperty(DISABLE_TOON_PATCH_PROPERTY);
-				}
-				Iris.reload();
-			});
-		} catch (IOException exception) {
-			throw new AssertionError("could not reload Iris with the toon patch "
-				+ (disabled ? "disabled" : "enabled"), exception);
-		}
-		context.waitFor(client -> PACK_NAME.equals(Iris.getCurrentPackName())
-			&& Iris.getPipelineManager().getPipeline().isPresent()
-			&& Iris.getStoredError().isEmpty(), 1200);
-	}
-
-	private static void verifyPatchedEntityShaders(Path debugDirectory) {
-		try (var files = Files.list(debugDirectory)) {
-			List<Path> dumps = files
-				.filter(Files::isRegularFile)
-				.filter(path -> path.getFileName().toString().matches("\\d+_entities_.+\\.[vf]sh"))
-				.sorted()
-				.toList();
-			for (Path fragment : dumps) {
-				String filename = fragment.getFileName().toString();
-				if (!filename.endsWith(".fsh")) {
-					continue;
-				}
-				Path vertex = fragment.resolveSibling(filename.substring(0, filename.length() - 4) + ".vsh");
-				if (!Files.isRegularFile(vertex)) {
-					continue;
-				}
-				String vertexSource = Files.readString(vertex);
-				String fragmentSource = Files.readString(fragment);
-				if (vertexSource.contains("celerant_vrm_toon_marker")
-					&& fragmentSource.contains("celerant_vrm_toon_marker")
-					&& fragmentSource.contains("celerant_vrm_ramp")
-					&& fragmentSource.contains("celerant_vrm_toon_normal")) {
-					System.out.println("[Celerant toon test] verified Iris runtime shader pair "
-						+ vertex.getFileName() + " / " + fragment.getFileName());
-					return;
-				}
+		boolean[] hudWasHidden = new boolean[1];
+		context.runOnClient(client -> {
+			hudWasHidden[0] = client.gui.hud.isHidden();
+			if (!hudWasHidden[0]) {
+				client.gui.hud.toggle();
 			}
-			throw new AssertionError("actual Iris entities_* shader dump must contain the Celerant toon patch; dumps="
-				+ dumps.stream().map(path -> path.getFileName().toString()).sorted().toList());
-		} catch (IOException exception) {
-			throw new AssertionError("could not inspect Iris patched_shaders output", exception);
+		});
+		try {
+			context.waitTicks(10);
+			Path toonOn = context.takeScreenshot(prefix + "-on");
+			Path toonOff;
+			try {
+				setToonShaderDisabled(context, true);
+				context.waitTicks(10);
+				toonOff = context.takeScreenshot(prefix + "-off");
+			} finally {
+				setToonShaderDisabled(context, false);
+				context.waitTicks(10);
+			}
+			return new Path[] {toonOn, toonOff, context.takeScreenshot(prefix + "-restored")};
+		} finally {
+			context.runOnClient(client -> {
+				if (client.gui.hud.isHidden() != hudWasHidden[0]) {
+					client.gui.hud.toggle();
+				}
+			});
 		}
 	}
 
-	private static void verifyIrisMixinPath() {
-		Map<PatchShaderType, String> patched = TransformPatcher.patchVanilla(
-			"entities_celerant_gametest",
-			VERTEX_SHADER, null, null, null, FRAGMENT_SHADER,
-			AlphaTest.ALWAYS, false, false, false,
-			new ShaderAttributeInputs(true, true, true, true, true),
-			new Object2ObjectOpenHashMap<>());
-		String vertex = patched.get(PatchShaderType.VERTEX);
-		String fragment = patched.get(PatchShaderType.FRAGMENT);
-		require(vertex != null && vertex.contains("celerant_vrm_toon_marker") && vertex.contains("iris_UV1"),
-			"Iris TransformPatcher mixin must inject the VRM overlay marker");
-		require(fragment != null && fragment.contains("celerant_vrm_ramp")
-			&& fragment.contains("celerant_vrm_toon_normal") && fragment.contains("shadowLightPosition"),
-			"Iris TransformPatcher mixin must inject the normal-based toon pass");
-
-		Map<PatchShaderType, String> multiOutput = TransformPatcher.patchVanilla(
-			"entities_celerant_multibuffer",
-			VERTEX_SHADER, null, null, null, MULTI_OUTPUT_FRAGMENT_SHADER,
-			AlphaTest.ALWAYS, false, false, false,
-			new ShaderAttributeInputs(true, true, true, true, true),
-			new Object2ObjectOpenHashMap<>());
-		require(!multiOutput.get(PatchShaderType.FRAGMENT).contains("celerant_vrm_toon_marker"),
-			"multi-attachment ShaderPacks must remain unchanged");
+	private static void setToonShaderDisabled(ClientGameTestContext context, boolean disabled) {
+		context.runOnClient(client -> {
+			if (disabled) {
+				System.setProperty(DISABLE_TOON_SHADER_PROPERTY, "true");
+			} else {
+				System.clearProperty(DISABLE_TOON_SHADER_PROPERTY);
+			}
+		});
 	}
 
 	private static void sendCommand(ClientGameTestContext context, String command, String expectedMessage) {
@@ -1536,27 +1471,16 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 			int[] onPixels = toonOn.getPixels();
 			int[] offPixels = toonOff.getPixels();
 			int[] restoredPixels = toonRestored.getPixels();
-			int[] onBounds = {width, height, -1, -1};
 			int[] offBounds = {width, height, -1, -1};
-			int[] restoredBounds = {width, height, -1, -1};
-			int onCount = 0;
+			int[] signalBounds = {width, height, -1, -1};
 			int offCount = 0;
-			int restoredCount = 0;
-			int stablePixels = 0;
-			int changedPixels = 0;
+			int restoredStablePixels = 0;
+			int changedModelPixels = 0;
+			int signalPixels = 0;
 			for (int index = 0; index < onPixels.length; index++) {
 				int x = index % width;
 				int y = index / width;
-				boolean onMagenta = isMagenta(onPixels[index]);
 				boolean offMagenta = isMagenta(offPixels[index]);
-				boolean restoredMagenta = isMagenta(restoredPixels[index]);
-				if (onMagenta) {
-					onCount++;
-					onBounds[0] = Math.min(onBounds[0], x);
-					onBounds[1] = Math.min(onBounds[1], y);
-					onBounds[2] = Math.max(onBounds[2], x);
-					onBounds[3] = Math.max(onBounds[3], y);
-				}
 				if (offMagenta) {
 					offCount++;
 					offBounds[0] = Math.min(offBounds[0], x);
@@ -1564,40 +1488,37 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 					offBounds[2] = Math.max(offBounds[2], x);
 					offBounds[3] = Math.max(offBounds[3], y);
 				}
-				if (restoredMagenta) {
-					restoredCount++;
-					restoredBounds[0] = Math.min(restoredBounds[0], x);
-					restoredBounds[1] = Math.min(restoredBounds[1], y);
-					restoredBounds[2] = Math.max(restoredBounds[2], x);
-					restoredBounds[3] = Math.max(restoredBounds[3], y);
-				}
-				if (onMagenta && offMagenta && restoredMagenta) {
-					stablePixels++;
-					int idleDelta = rgbDistance(onPixels[index], restoredPixels[index]);
-					int toonDelta = Math.min(rgbDistance(onPixels[index], offPixels[index]),
-						rgbDistance(restoredPixels[index], offPixels[index]));
-					if (idleDelta <= 18 && toonDelta >= Math.max(36, idleDelta * 3)) {
-						changedPixels++;
+				int idleDelta = rgbDistance(onPixels[index], restoredPixels[index]);
+				int toonDelta = Math.min(rgbDistance(onPixels[index], offPixels[index]),
+					rgbDistance(restoredPixels[index], offPixels[index]));
+				boolean toonSignal = idleDelta <= 18 && toonDelta >= Math.max(36, idleDelta * 3);
+				if (offMagenta && idleDelta <= 18) {
+					restoredStablePixels++;
+					if (toonSignal) {
+						changedModelPixels++;
 					}
 				}
+				if (toonSignal) {
+					signalPixels++;
+					signalBounds[0] = Math.min(signalBounds[0], x);
+					signalBounds[1] = Math.min(signalBounds[1], y);
+					signalBounds[2] = Math.max(signalBounds[2], x);
+					signalBounds[3] = Math.max(signalBounds[3], y);
+				}
 			}
-			require(onCount >= 50 && offCount >= 50 && restoredCount >= 50,
-				"toon A/B screenshots must all contain the VRM");
-			for (int index = 0; index < onBounds.length; index++) {
-				require(Math.abs(onBounds[index] - offBounds[index]) <= 1,
-					"toon A/B must keep a stable VRM bounding box (on=" + Arrays.toString(onBounds)
-						+ ", off=" + Arrays.toString(offBounds) + ")");
-				require(Math.abs(onBounds[index] - restoredBounds[index]) <= 1,
-					"restoring the toon patch must restore the VRM bounding box (on=" + Arrays.toString(onBounds)
-						+ ", restored=" + Arrays.toString(restoredBounds) + ")");
-			}
-			require(stablePixels * 100 >= Math.min(Math.min(onCount, offCount), restoredCount) * 80,
-				"toon A/B must compare the same VRM pixels (stable=" + stablePixels + ")");
-			require(changedPixels >= 20 && changedPixels * 100 >= stablePixels * 50,
-				"disabling the runtime toon patch must change stable VRM material pixels (changed="
-					+ changedPixels + ", stable=" + stablePixels + ")");
-			System.out.println("[Celerant toon test] stable VRM pixels=" + stablePixels
-				+ ", changed material pixels=" + changedPixels + ", bounds=" + Arrays.toString(onBounds));
+			require(offCount >= 50, "toon OFF screenshot must contain the VRM");
+			require(restoredStablePixels * 100 >= offCount * 80,
+				"restoring ToonShader must reproduce the same VRM pixels (stable=" + restoredStablePixels + ")");
+			require(changedModelPixels >= 20 && changedModelPixels * 100 >= restoredStablePixels * 30,
+				"disabling ToonShader must change VRM material pixels (changed=" + changedModelPixels
+					+ ", stable=" + restoredStablePixels + ")");
+			require(signalPixels >= changedModelPixels, "ToonShader signal must include the changed VRM material");
+			require(signalBounds[0] >= offBounds[0] - 16 && signalBounds[1] >= offBounds[1] - 16
+				&& signalBounds[2] <= offBounds[2] + 16 && signalBounds[3] <= offBounds[3] + 16,
+				"ToonShader changes must stay on the VRM and its outline (signal=" + Arrays.toString(signalBounds)
+					+ ", off=" + Arrays.toString(offBounds) + ")");
+			System.out.println("[Celerant toon test] stable VRM pixels=" + restoredStablePixels
+				+ ", changed material pixels=" + changedModelPixels + ", bounds=" + Arrays.toString(offBounds));
 		} catch (IOException exception) {
 			throw new AssertionError("could not inspect toon A/B screenshots", exception);
 		}
@@ -1640,7 +1561,7 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 				bounds[3] = Math.max(bounds[3], y);
 			}
 			require(signalPixels >= Math.max(500, width * height / 1000),
-				"the local VRM must visibly change when its runtime toon patch is disabled");
+				"the local VRM must visibly change when ToonShader is disabled");
 			require(centeredSignals * 100 >= signalPixels * 95,
 				"local toon A/B changes must stay on the centered VRM (signals=" + signalPixels
 					+ ", centered=" + centeredSignals + ")");
@@ -1762,7 +1683,7 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		int blue = pixel & 0xFF;
 		int green = pixel >>> 8 & 0xFF;
 		int red = pixel >>> 16 & 0xFF;
-		return red >= 55 && green <= 60 && blue >= 75;
+		return red >= 55 && green <= 60 && blue >= 15;
 	}
 
 	private static int rgbDistance(int first, int second) {
@@ -1794,6 +1715,21 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 			Files.writeString(shaders.resolve("gbuffers_entities.fsh"), FRAGMENT_SHADER);
 			Files.createDirectories(modelPath.getParent());
 			Files.write(modelPath, createMinimalVrm());
+			BufferedImage lightMap = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+			lightMap.setRGB(0, 0, 0xFF003300);
+			require(ImageIO.write(lightMap, "png", modelPath.resolveSibling("minimal-lightmap.png").toFile()),
+				"PNG writer must be available for the ToonShader fixture");
+			Files.writeString(Path.of(modelPath + ".toon.json"), """
+				{
+				  "version": 1,
+				  "materials": [
+				    {"index": 0, "lightMap": "minimal-lightmap.png", "outline": true,
+				     "outlineMode": "screen", "outlineWidth": 0.4, "outlineScaleFar": 1.0},
+				    {"index": 1, "lightMap": "minimal-lightmap.png", "outline": true,
+				     "outlineMode": "screen", "outlineWidth": 0.4, "outlineScaleFar": 1.0}
+				  ]
+				}
+				""");
 		} catch (IOException exception) {
 			throw new AssertionError("could not prepare client game test fixtures", exception);
 		}
@@ -1814,6 +1750,21 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 			Files.createDirectories(target.getParent());
 			Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
 			target.toFile().deleteOnExit();
+			Path sidecar = Path.of(source.toString() + ".toon.json");
+			if (Files.isRegularFile(sidecar)) {
+				Path targetSidecar = Path.of(target.toString() + ".toon.json");
+				Files.copy(sidecar, targetSidecar, StandardCopyOption.REPLACE_EXISTING);
+				targetSidecar.toFile().deleteOnExit();
+				try (var files = Files.list(source.getParent())) {
+					for (Path texture : files.filter(Files::isRegularFile)
+						.filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".png"))
+						.toList()) {
+						Path targetTexture = target.getParent().resolve(texture.getFileName());
+						Files.copy(texture, targetTexture, StandardCopyOption.REPLACE_EXISTING);
+						targetTexture.toFile().deleteOnExit();
+					}
+				}
+			}
 			return true;
 		} catch (IOException exception) {
 			throw new AssertionError("could not copy the local visual VRM", exception);
@@ -1888,7 +1839,7 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		String json = """
 			{
 			  "asset":{"version":"2.0","generator":"Celerant Client Game Test"},
-			  "extensionsUsed":["VRMC_vrm"],
+			  "extensionsUsed":["VRMC_vrm","VRMC_materials_mtoon"],
 			  "extensions":{"VRMC_vrm":{
 			    "specVersion":"1.0",
 			    "meta":{"name":"Celerant Test Avatar","version":"1.0","authors":["Celerant"],"licenseUrl":"https://vrm.dev/licenses/1.0/"},
@@ -1932,9 +1883,15 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 			    {"attributes":{"POSITION":0,"NORMAL":1,"TEXCOORD_0":2,"JOINTS_0":6,"WEIGHTS_0":7},
 			     "targets":[{"POSITION":3}],"indices":5,"material":1}
 			  ]}],
-			  "materials":[{"doubleSided":true,"pbrMetallicRoughness":{
+			  "materials":[{"doubleSided":true,"extensions":{"VRMC_materials_mtoon":{
+			    "specVersion":"1.0","shadeColorFactor":[0.52,0.02,0.24],"shadingToonyFactor":0.9,
+			    "outlineWidthMode":"screenCoordinates","outlineWidthFactor":0.4,"outlineColorFactor":[0.16,0.01,0.08]
+			  }},"pbrMetallicRoughness":{
 			    "baseColorFactor":[1.0,0.05,0.55,1.0],"metallicFactor":0.0,"roughnessFactor":1.0
-			  }},{"doubleSided":true,"pbrMetallicRoughness":{
+			  }},{"doubleSided":true,"extensions":{"VRMC_materials_mtoon":{
+			    "specVersion":"1.0","shadeColorFactor":[0.48,0.0,0.48],"shadingToonyFactor":0.9,
+			    "outlineWidthMode":"screenCoordinates","outlineWidthFactor":0.4,"outlineColorFactor":[0.12,0.0,0.12]
+			  }},"pbrMetallicRoughness":{
 			    "baseColorFactor":[1.0,0.0,1.0,1.0],"metallicFactor":0.0,"roughnessFactor":1.0
 			  }}],
 			  "buffers":[{"byteLength":%d}],
