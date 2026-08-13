@@ -51,8 +51,12 @@ dependencies {
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 
-	implementation("com.github.westernbear:MCglTF-1.20.4:${project.mcgltf_version}") {
-		transitive = false
+	if (providers.gradleProperty("localMcgltf").isPresent()) {
+		implementation files(providers.gradleProperty("localMcgltf").get())
+	} else {
+		implementation("com.github.westernbear:MCglTF-1.20.4:${project.mcgltf_version}") {
+			transitive = false
+		}
 	}
 	compileOnly "maven.modrinth:iris:${project.iris_version}"
 	runtimeOnly "maven.modrinth:iris:${project.iris_version}"

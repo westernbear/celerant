@@ -991,8 +991,8 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 				writeMatrixReportStart(report, sources.size(), baseline);
 
 				for (int index = 0; index < sources.size(); index++) {
-					MatrixRow row = runShaderPackMatrixRow(context, gameDirectory, sources.get(index), index + 1,
-						workingCopies);
+					MatrixRow row = runShaderPackMatrixRow(context, world, connection, gameDirectory,
+						sources.get(index), index + 1, workingCopies);
 					rows.add(row);
 					appendMatrixRow(report, row);
 				}
@@ -1020,8 +1020,8 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		System.out.println("[Celerant shader matrix] " + report + " (packs=" + rows.size() + ")");
 	}
 
-	private static MatrixRow runShaderPackMatrixRow(ClientGameTestContext context, Path gameDirectory,
-		Path source, int index, List<Path> workingCopies) {
+	private static MatrixRow runShaderPackMatrixRow(ClientGameTestContext context, TestSingleplayerContext world,
+		TestServerConnection connection, Path gameDirectory, Path source, int index, List<Path> workingCopies) {
 		Path shaderpacks = gameDirectory.resolve("shaderpacks");
 		String prefix = String.format(Locale.ROOT, "celerant-shader-matrix-%03d", index);
 		String sourceHashBefore = "";
@@ -1070,8 +1070,14 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		}
 		MatrixState off = captureMatrixState(context, packName, true, true, prefix + "-off", true);
 		MatrixState restored = captureMatrixState(context, packName, true, false, prefix + "-restored", false);
+		try {
+			writeRestoredToonEvidence(gameDirectory, index, restored.image());
+			captureDirectionalToon(context, world, connection, gameDirectory, index, prefix);
+		} catch (Exception | AssertionError exception) {
+			error = addProblem(error, "visual evidence captures", exception);
+		}
 
-		ToonSignal toonSignal = new ToonSignal(false, 0, 0, "");
+		ToonSignal toonSignal = new ToonSignal(false, 0, 0, "", 0, 0, 0);
 		try {
 			toonSignal = measureToonSignal(on.image(), off.image(), restored.image());
 		} catch (Exception exception) {
@@ -1087,6 +1093,86 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		boolean copyHashMatches = !sourceHashBefore.isEmpty() && sourceHashBefore.equals(copiedHash);
 		return new MatrixRow(source, sourceHashBefore, sourceHashAfter, sourceHashIntact, copyHashMatches,
 			on, dumpStats, off, restored, toonSignal, error);
+	}
+
+	private static void captureDirectionalToon(ClientGameTestContext context, TestSingleplayerContext world,
+		TestServerConnection connection, Path gameDirectory, int row, String prefix) throws IOException {
+		int[] times = {1000, 11000};
+		String[] names = {"light-east", "light-west"};
+		Path evidenceDirectory = toonEvidenceDirectory(gameDirectory, row);
+		try {
+			for (int index = 0; index < times.length; index++) {
+				world.getServer().runCommand("time set " + times[index]);
+				connection.waitForClientboundPackets();
+				context.waitTicks(30);
+				Path image = context.takeScreenshot(prefix + "-toon-on-" + names[index]);
+				assertNonEmpty(image, "directional ToonShader screenshot must not be empty");
+				writeToonCropPair(image, evidenceDirectory, "toon-on-" + names[index] + "-face",
+					560, 180, 160, 150);
+				System.out.println("[Celerant visual test] " + image);
+			}
+		} finally {
+			world.getServer().runCommand("time set 6000");
+			connection.waitForClientboundPackets();
+			context.waitTicks(20);
+		}
+	}
+
+	private static void writeRestoredToonEvidence(Path gameDirectory, int row, Path screenshot) throws IOException {
+		if (screenshot == null) {
+			throw new IOException("restored ToonShader screenshot is unavailable");
+		}
+		Path directory = toonEvidenceDirectory(gameDirectory, row);
+		try (NativeImage image = NativeImage.read(Files.newInputStream(screenshot))) {
+			requireEvidenceViewport(image);
+			writeToonCropPair(image, directory, "toon-on-restored-full-character", 390, 180, 500, 540);
+			writeToonCropPair(image, directory, "toon-on-restored-face", 560, 180, 160, 150);
+			writeToonCropPair(image, directory, "toon-on-restored-hair", 500, 140, 280, 250);
+			writeToonCropPair(image, directory, "toon-on-restored-white-cloth", 460, 270, 360, 260);
+			writeToonCropPair(image, directory, "toon-on-restored-metal-earring", 620, 220, 120, 170);
+			writeToonCropPair(image, directory, "toon-on-restored-metal-boots", 555, 545, 170, 170);
+		}
+	}
+
+	private static void writeToonCropPair(Path screenshot, Path directory, String name,
+		int x, int y, int width, int height) throws IOException {
+		try (NativeImage image = NativeImage.read(Files.newInputStream(screenshot))) {
+			requireEvidenceViewport(image);
+			writeToonCropPair(image, directory, name, x, y, width, height);
+		}
+	}
+
+	private static void writeToonCropPair(NativeImage source, Path directory, String name,
+		int x, int y, int width, int height) throws IOException {
+		require(x >= 0 && y >= 0 && x + width <= source.getWidth() && y + height <= source.getHeight(),
+			"ToonShader evidence crop must stay inside the viewport");
+		Files.createDirectories(directory);
+		Path nativePath = directory.resolve(name + "-native.png");
+		Path nearestPath = directory.resolve(name + "-4x.png");
+		try (NativeImage crop = new NativeImage(width, height, false);
+			 NativeImage nearest = new NativeImage(width * 4, height * 4, false)) {
+			source.copyRect(crop, x, y, 0, 0, width, height, false, false);
+			for (int pixelY = 0; pixelY < height; pixelY++) {
+				for (int pixelX = 0; pixelX < width; pixelX++) {
+					nearest.fillRect(pixelX * 4, pixelY * 4, 4, 4, crop.getPixel(pixelX, pixelY));
+				}
+			}
+			crop.writeToFile(nativePath);
+			nearest.writeToFile(nearestPath);
+		}
+		assertNonEmpty(nativePath, "native ToonShader evidence crop must not be empty");
+		assertNonEmpty(nearestPath, "4x ToonShader evidence crop must not be empty");
+	}
+
+	private static Path toonEvidenceDirectory(Path gameDirectory, int row) {
+		return gameDirectory.resolve("screenshots/toon-evidence")
+			.resolve(String.format(Locale.ROOT, "row-%03d", row));
+	}
+
+	private static void requireEvidenceViewport(NativeImage image) {
+		require(image.getWidth() == 1280 && image.getHeight() == 720,
+			"ToonShader evidence requires a 1280x720 viewport (actual="
+				+ image.getWidth() + "x" + image.getHeight() + ")");
 	}
 
 	private static void cleanupMatrixWorkingPacks(ClientGameTestContext context, List<Path> workingCopies) {
@@ -1149,7 +1235,7 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 			}
 		} else {
 			try {
-				context.waitTicks(20);
+				captureFrameStats(context);
 			} catch (Exception | AssertionError exception) {
 				error = addProblem(error, "restore warmup", exception);
 			}
@@ -1249,11 +1335,21 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 			int[] restoredPixels = restored.getPixels();
 			int signalPixels = 0;
 			int centeredSignals = 0;
+			int restoredComparedPixels = 0;
+			int restoredStablePixels = 0;
+			int restoredMaxDelta = 0;
 			int[] bounds = {width, height, -1, -1};
 			for (int index = 0; index < onPixels.length; index++) {
 				int idleDelta = rgbDistance(onPixels[index], restoredPixels[index]);
 				int toonDelta = Math.min(rgbDistance(onPixels[index], offPixels[index]),
 					rgbDistance(restoredPixels[index], offPixels[index]));
+				if (toonDelta >= 36) {
+					restoredComparedPixels++;
+					restoredMaxDelta = Math.max(restoredMaxDelta, idleDelta);
+					if (idleDelta <= 18) {
+						restoredStablePixels++;
+					}
+				}
 				if (idleDelta > 18 || toonDelta < Math.max(36, idleDelta * 3)) {
 					continue;
 				}
@@ -1273,7 +1369,8 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 				&& centeredSignals * 100 >= signalPixels * 95
 				&& bounds[2] - bounds[0] >= width * 5 / 100
 				&& bounds[3] - bounds[1] >= height * 15 / 100;
-			return new ToonSignal(detected, signalPixels, centeredSignals, Arrays.toString(bounds));
+			return new ToonSignal(detected, signalPixels, centeredSignals, Arrays.toString(bounds),
+				restoredComparedPixels, restoredStablePixels, restoredMaxDelta);
 		}
 	}
 
@@ -1999,7 +2096,8 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 	private record ShaderDumpStats(int patched, int total) {
 	}
 
-	private record ToonSignal(boolean detected, int signalPixels, int centeredPixels, String bounds) {
+	private record ToonSignal(boolean detected, int signalPixels, int centeredPixels, String bounds,
+		int restoredComparedPixels, int restoredStablePixels, int restoredMaxDelta) {
 	}
 
 	private record MatrixRow(
@@ -2021,7 +2119,9 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 			"on_iris_error", "on_pack_in_use", "on_error", "patched_entity_programs", "total_entity_programs",
 			"off_reload_ms", "off_frame_samples", "off_median_ms", "off_p95_ms", "off_p99_ms", "off_image",
 			"off_iris_error", "off_pack_in_use", "off_error", "restored_reload_ms", "restored_image", "restored_iris_error",
-			"restored_pack_in_use", "restored_error", "toon_signal", "toon_signal_pixels", "toon_centered_pixels", "toon_bounds", "error");
+			"restored_pack_in_use", "restored_error", "restored_tolerance_rgb_distance", "restored_compared_pixels",
+			"restored_stable_pixels", "restored_stable_ratio", "restored_max_rgb_delta", "toon_signal", "toon_signal_pixels",
+			"toon_centered_pixels", "toon_bounds", "error");
 
 		private String toTsv() {
 			return String.join("\t",
@@ -2033,7 +2133,11 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 				metric(off.reloadMs()), Integer.toString(off.frames().samples()), metric(off.frames().medianMs()),
 				metric(off.frames().p95Ms()), metric(off.frames().p99Ms()), tsvPath(off.image()),
 				tsv(off.irisError()), Boolean.toString(off.packInUse()), tsv(off.error()), metric(restored.reloadMs()), tsvPath(restored.image()),
-				tsv(restored.irisError()), Boolean.toString(restored.packInUse()), tsv(restored.error()), Boolean.toString(toon.detected()),
+				tsv(restored.irisError()), Boolean.toString(restored.packInUse()), tsv(restored.error()), "18",
+				Integer.toString(toon.restoredComparedPixels()), Integer.toString(toon.restoredStablePixels()),
+				metric(toon.restoredComparedPixels() == 0 ? Double.NaN
+					: (double) toon.restoredStablePixels() / toon.restoredComparedPixels()),
+				Integer.toString(toon.restoredMaxDelta()), Boolean.toString(toon.detected()),
 				Integer.toString(toon.signalPixels()), Integer.toString(toon.centeredPixels()), tsv(toon.bounds()), tsv(error));
 		}
 	}
