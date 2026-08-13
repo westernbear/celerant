@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 1.2.1
+
+- MCglTF 26.2-Fabric-2.3.2.6의 분리된 Genshin-style ToonShader 경로를 사용해 공식 face SDF·LightMap·ramp, smooth normal, 재질별 outline, rim/specular와 HDR 합성을 지원합니다.
+- BSL R10.1.3, Complementary Reimagined r5.8.1, Complementary Unbound r5.8.1에서 Jingburger ON/OFF/restored·반대 방향 얼굴광·원본/4× 크롭을 수집하고 공식 레퍼런스 대비 모든 시각·기술 게이트를 검증합니다.
+- 대표 ShaderPack을 각각 새 Minecraft JVM과 제한된 memory scope에서 실행하도록 OOM 방지 절차를 문서화합니다.
+
+## 1.2.0
+
 - 모든 VRM 사용자 작업을 OneConfig 1.1.6 제어 센터에서 수행하고, native `.vrm` 선택기, 알림, `V` 단축키와 Minecraft/OneConfig 키 설정을 제공합니다.
 - 실제 OneConfig 화면 열기·재진입부터 파일 선택, 입력, 슬라이더, 스위치와 모든 버튼을 pointer/key 이벤트로 조작하고, 로드·배치·표정·플레이어 교체·Iris toon·언로드 결과를 Client GameTest로 검증합니다.
 

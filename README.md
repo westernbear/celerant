@@ -6,7 +6,7 @@ Minecraft 26.2 Fabric 클라이언트에서 MCglTF로 로컬 VRM 0.x/1.0 모델�
 
 - Fabric Loader 0.19.3+
 - Fabric API 0.156.0+26.2
-- [MCglTF 26.2-Fabric-2.3.2.5](https://github.com/westernbear/MCglTF-1.20.4/releases)
+- [MCglTF 26.2-Fabric-2.3.2.6](https://github.com/westernbear/MCglTF-1.20.4/releases/tag/v26.2-Fabric-2.3.2.6)
 - Iris 1.11.2+와 Iris가 요구하는 Sodium 0.9.x
 - [OneConfig 1.1.6 for Fabric 26.2](https://modrinth.com/mod/oneconfig/version/UCFu181L)와 OneConfig가 요구하는 Compose Multiplatform, Fabric Language Kotlin
 
@@ -33,11 +33,11 @@ Minecraft 26.2 Fabric 클라이언트에서 MCglTF로 로컬 VRM 0.x/1.0 모델�
 
 ## ToonShader와 ShaderPack 경계
 
-Celerant는 ShaderPack ZIP, GLSL 원본, Iris가 변환한 프로그램과 G-buffer attachment를 수정·저장·재배포하지 않습니다. Iris의 `finalizeLevelRendering`이 끝난 뒤 MCglTF의 분리된 `ToonShader` 렌더러를 호출하고, 현재 main color/depth를 읽기 전용 복사본으로 사용해 선택된 VRM primitive만 최종 color target에 합성합니다. 팩 이름·아카이브 해시·임계값별 분기는 없으며, 알 수 없는 ShaderPack 저장 형식에 codec을 추측하지 않습니다.
+Celerant는 ShaderPack ZIP, GLSL 원본, Iris가 변환한 프로그램과 G-buffer attachment를 수정·저장·재배포하지 않습니다. Iris의 `finalizeLevelRendering`이 끝난 뒤 MCglTF의 분리된 `ToonShader` 렌더러가 선택된 VRM primitive를 자체 HDR color/depth target에 렌더링하고 ShaderPack 장면 depth와 대조한 뒤 main color target에 premultiplied alpha로 합성합니다. 팩 이름·아카이브 해시·임계값별 분기는 없으며, 알 수 없는 ShaderPack 저장 형식에 codec을 추측하지 않습니다.
 
 일반 MCglTF 사용자는 계속 표준 glTF/MToon 경로만 사용합니다. Celerant가 `RenderedGltfModel.MTOON_OVERLAY_REQUEST`로 명시 요청한 모델만 ToonShader queue에 들어가므로 MCglTF 전체를 툰 전용 렌더러로 바꾸지 않습니다. ShaderPack이 꺼진 경우에는 MCglTF의 기존 managed MToon pass가 사용됩니다.
 
-`model.vrm.toon.json` sidecar가 있으면 재질별 LightMap/ramp, 얼굴 SDF와 head forward/right, smooth normal 또는 `TEXCOORD_7`, day/night ramp, shade texture, normal map, 금속/비금속 specular와 matcap, emission, blush, depth rim, outline width texture·vertex alpha·거리 스케일·재질별 색, base/outline screen offset을 명시할 수 있습니다. sidecar가 없는 표준 MToon 재질도 중립 fallback으로 동작하지만, LightMap·face SDF처럼 VRM 표준에 없는 데이터는 다른 texture에서 추측하지 않습니다. 상세 스키마는 MCglTF README의 **Optional ToonShader sidecar** 절을 따릅니다.
+`model.vrm.toon.json` v2 sidecar가 있으면 material 또는 mesh primitive별 LightMap/ramp, 분리된 face LightMap·shadow SDF와 head forward/right, authored smooth normal 또는 명시적 생성, normal map tangent, 금속/비금속 specular와 matcap, emission, blush, depth rim, outline width texture·vertex alpha·거리 스케일·재질별 색, base/outline screen offset을 명시할 수 있습니다. sidecar가 없는 표준 MToon 재질도 중립 fallback으로 동작하지만, LightMap·face SDF처럼 VRM 표준에 없는 데이터는 다른 texture에서 추측하지 않습니다. 상세 스키마는 MCglTF README의 **Optional ToonShader sidecar** 절을 따릅니다.
 
 VRM 모델과 사용자가 설치한 ShaderPack의 라이선스·이용 조건은 각각 사용자가 확인해야 합니다.
 
@@ -74,14 +74,14 @@ CELERANT_VISUAL_VRM=/absolute/path/model.vrm \
 xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runClientGameTest --offline
 ```
 
-2026-08-09 기준 Iris 1.11.2 / MCglTF 2.3.2.5에서 현재 Modrinth 26.2 호환판인 Complementary Reimagined r5.8.1, Complementary Unbound r5.8.1, BSL R10.1.3을 Jingburger VRM과 실제 pack 활성 상태로 직접 검사했습니다. 세 팩 모두 source SHA-256 보존, `patched_entity_programs=0`, ON/OFF/restored 시각 신호와 복원을 통과했습니다. llvmpipe 1280×720의 ON/OFF 중앙 프레임 시간은 각각 763/634 ms, 771/648 ms, 878/762 ms로 약 15–20% 증가했습니다. 이는 소프트웨어 렌더러 수치이며 실제 GPU 성능 기준은 아닙니다.
+2026-08-13 기준 Iris 1.11.2 / MCglTF 2.3.2.6에서 현재 Modrinth 26.2 호환판인 BSL R10.1.3, Complementary Reimagined r5.8.1, Complementary Unbound r5.8.1을 Jingburger VRM과 실제 pack 활성 상태로 직접 검사했습니다. 공식 `UnityGenshinToonShader` 이미지와 높이를 맞춘 비교판, ON/OFF/restored, 반대 방향 얼굴광, 원본 및 4× 최근접 크롭을 모두 직접 확인했으며 세 팩의 얼굴 SDF·재질 램프·smooth normal·외곽선·rim/specular·합성 게이트가 통과했습니다. 세 팩 모두 source SHA-256 보존, `patched_entity_programs=0/9`, restored 픽셀 안정성 1.000을 기록했습니다. llvmpipe 1280×720의 ON/OFF 중앙 프레임 시간은 BSL 902/751 ms, Reimagined 756/633 ms, Unbound 807/670 ms였습니다. 이는 소프트웨어 렌더러 수치이며 실제 GPU 성능 기준은 아닙니다.
 
 ## CI와 릴리스
 
 main 브랜치와 pull request는 Gradle 빌드 및 실제 Xvfb 클라이언트 게임 테스트를 실행합니다. 새 GitHub Release는 깨끗하고 원격과 동기화된 main 브랜치에서 다음 명령으로 생성합니다.
 
 ```bash
-./scripts/release.sh 1.2.0
+./scripts/release.sh 1.2.1
 ```
 
 스크립트가 버전 변경, 빌드, 커밋, 주석 태그와 main의 원자적 push를 수행합니다. `v*` 태그의 Release workflow가 클라이언트 게임 테스트를 다시 통과한 뒤 모드 JAR과 SHA-256 체크섬을 게시합니다.
