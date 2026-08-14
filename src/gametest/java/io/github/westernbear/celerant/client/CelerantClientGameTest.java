@@ -165,12 +165,36 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		require(!context.computeOnClient(client -> VrmRuntime.getInstance().isLoading()),
 			"blank OneConfig model path must not start loading");
 		waitForNotification(context, "Choose a .vrm file first", NotificationType.ERROR);
+		clickUiCategory(context, "Rendering");
+		clearNotifications(context);
+		clickUiRowControl(context, "Generate Toon draft", "OnClick :");
+		waitForNotification(context, "Choose a .vrm file first", NotificationType.ERROR);
+
+		Path draftModel = modelPath.resolveSibling("toon-draft.vrm");
+		Path draftProfile = Path.of(draftModel + ".toon.json");
+		clickUiCategory(context, "Model");
+		selectOneConfigFile(context, draftModel.toAbsolutePath());
+		clickUiCategory(context, "Rendering");
+		clearNotifications(context);
+		clickUiRowControl(context, "Generate Toon draft", "OnClick :");
+		waitForNotification(context, "Created toon-draft.vrm.toon.json", NotificationType.SUCCESS);
+		try {
+			String generated = Files.readString(draftProfile);
+			require(generated.contains("\"version\": 2") && generated.contains("\"smoothNormals\": \"generate\"")
+				&& !generated.contains("faceLightMap") && !generated.contains("lightMap"),
+				"generated Toon draft must not fabricate semantic maps");
+		} catch (IOException exception) {
+			throw new AssertionError("could not inspect generated Toon draft", exception);
+		}
+		clearNotifications(context);
+		clickUiRowControl(context, "Generate Toon draft", "OnClick :");
+		waitForNotification(context, "not overwritten", NotificationType.ERROR);
+		clickUiCategory(context, "Model");
 
 		Path invalidModel = modelPath.resolveSibling("not-a-vrm.txt").toAbsolutePath();
 		selectOneConfigFile(context, invalidModel);
 		FileDialogRequest dialog = lastOneConfigFileDialog;
 		require(dialog != null && "VRM model".equals(dialog.title())
-			&& dialog.defaultPath() == null
 			&& "VRM models".equals(dialog.filterName()) && dialog.patterns().equals(List.of("*.vrm")),
 			"OneConfig must open its native picker with the VRM-only filter");
 		clearNotifications(context);
@@ -1812,6 +1836,7 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 			Files.writeString(shaders.resolve("gbuffers_entities.fsh"), FRAGMENT_SHADER);
 			Files.createDirectories(modelPath.getParent());
 			Files.write(modelPath, createMinimalVrm());
+			Files.write(modelPath.resolveSibling("toon-draft.vrm"), createMinimalVrm());
 			BufferedImage lightMap = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
 			lightMap.setRGB(0, 0, 0xFF003300);
 			require(ImageIO.write(lightMap, "png", modelPath.resolveSibling("minimal-lightmap.png").toFile()),

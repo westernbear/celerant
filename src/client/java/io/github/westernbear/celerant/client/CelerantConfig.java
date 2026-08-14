@@ -1,7 +1,12 @@
 package io.github.westernbear.celerant.client;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 
 import io.github.westernbear.celerant.client.toon.ToonShader;
 import net.irisshaders.iris.Iris;
@@ -49,6 +54,10 @@ public final class CelerantConfig extends Config {
 		description = "Composite VRM ToonShader materials after the Iris final pass. ShaderPack files stay unchanged.")
 	boolean toonEnabled = true;
 
+	@Switch(title = "Toon emission bloom", category = "Rendering",
+		description = "Add the multi-pass emission glow. Disable this first when ToonShader frame rate is low.")
+	boolean toonBloomEnabled;
+
 	private CelerantConfig() {
 		super("celerant", "assets/celerant/icon.png", "Celerant VRM", Category.QOL);
 	}
@@ -65,6 +74,7 @@ public final class CelerantConfig extends Config {
 		}
 		VrmRuntime.getInstance().setScale(scale);
 		ToonShader.setEnabled(toonEnabled);
+		com.modularmods.mcgltf.ToonShader.setBloomEnabled(toonBloomEnabled);
 		addCallback("scale", (Float value) -> {
 			return !VrmRuntime.getInstance().setScale(value);
 		});
@@ -77,6 +87,7 @@ public final class CelerantConfig extends Config {
 			return false;
 		});
 		addCallback("toonEnabled", this::setToonEnabled);
+		addCallback("toonBloomEnabled", this::setToonBloomEnabled);
 	}
 
 	void open() {
@@ -141,6 +152,39 @@ public final class CelerantConfig extends Config {
 		Notifications.success("Celerant VRM", "VRM unloaded.");
 	}
 
+	@Button(title = "Generate Toon draft", category = "Rendering", text = "Generate",
+		description = "Create a safe .toon.json draft beside the selected VRM. Smooth normals are generated and embedded MToon data is reused; face SDF, LightMaps, ramps, and outline controls still need authored assets.")
+	private void generateToonDraft() {
+		if (modelPath == null || modelPath.isBlank()) {
+			Notifications.error("Celerant Toon setup", "Choose a .vrm file first.");
+			return;
+		}
+		try {
+			Path model = Path.of(modelPath.trim()).toAbsolutePath().normalize();
+			if (!Files.isRegularFile(model)
+				|| !model.getFileName().toString().toLowerCase(java.util.Locale.ROOT).endsWith(".vrm")) {
+				Notifications.error("Celerant Toon setup", "Choose an existing .vrm file first.");
+				return;
+			}
+			Path profile = model.resolveSibling(model.getFileName() + ".toon.json");
+			Files.writeString(profile, """
+				{
+				  "version": 2,
+				  "smoothNormals": "generate",
+				  "smoothNormalAngle": 45.0
+				}
+				""", StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW);
+			Notifications.success("Celerant Toon setup", "Created " + profile.getFileName()
+				+ ". Import authored face SDF, LightMaps, and ramps to complete Genshin-style shading.");
+		} catch (InvalidPathException exception) {
+			Notifications.error("Celerant Toon setup", "The selected model path is invalid.");
+		} catch (FileAlreadyExistsException exception) {
+			Notifications.error("Celerant Toon setup", "A Toon profile already exists; it was not overwritten.");
+		} catch (IOException exception) {
+			Notifications.error("Celerant Toon setup", "Could not create the Toon profile: " + exception.getMessage());
+		}
+	}
+
 	@Button(title = "Place preview here", category = "Model", text = "Place",
 		description = "Move the standalone VRM preview to your current world position.")
 	private void placeHere() {
@@ -184,12 +228,20 @@ public final class CelerantConfig extends Config {
 	private void showStatus() {
 		String pack = Iris.isPackInUseQuick() ? Iris.getCurrentPackName() : "disabled";
 		Notifications.info("Celerant status", VrmRuntime.getInstance().info() + "\nIris: " + pack
-			+ ", toon: " + (ToonShader.isEnabled() ? "on" : "off"));
+			+ ", toon: " + (ToonShader.isEnabled() ? "on" : "off")
+			+ ", bloom: " + (com.modularmods.mcgltf.ToonShader.isBloomEnabled() ? "on" : "off"));
 	}
 
 	private boolean setToonEnabled(Boolean enabled) {
 		ToonShader.setEnabled(enabled);
 		Notifications.success("Celerant rendering", "Toon shading " + (enabled ? "enabled." : "disabled."));
+		return false;
+	}
+
+	private boolean setToonBloomEnabled(Boolean enabled) {
+		com.modularmods.mcgltf.ToonShader.setBloomEnabled(enabled);
+		Notifications.success("Celerant rendering", "Toon emission bloom "
+			+ (enabled ? "enabled." : "disabled."));
 		return false;
 	}
 }

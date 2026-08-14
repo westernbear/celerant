@@ -13,7 +13,7 @@ public final class ToonShader {
 	}
 
 	public static boolean isEnabled() {
-		return enabled;
+		return enabled && !Boolean.getBoolean("celerant.testing.disableToonShader");
 	}
 
 	public static void setEnabled(boolean enabled) {
@@ -21,7 +21,7 @@ public final class ToonShader {
 	}
 
 	public static void renderFinalPass() {
-		if (!enabled || Boolean.getBoolean("celerant.testing.disableToonShader")) {
+		if (!isEnabled()) {
 			return;
 		}
 		boolean bypass = ImmediateState.bypass;
