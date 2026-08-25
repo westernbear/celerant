@@ -1,12 +1,16 @@
 package io.github.westernbear.celerant.client;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
+import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import com.modularmods.mcgltf.ToonAssetGenerator;
 
 import io.github.westernbear.celerant.client.toon.ToonShader;
 import net.irisshaders.iris.Iris;
@@ -25,6 +29,12 @@ import org.polyfrost.oneconfig.utils.v1.dsl.ScreensKt;
 
 public final class CelerantConfig extends Config {
 	static final CelerantConfig INSTANCE = new CelerantConfig();
+	private static final ExecutorService DERIVATION = Executors.newSingleThreadExecutor(task -> {
+		Thread thread = new Thread(task, "Celerant Toon derivation");
+		thread.setDaemon(true);
+		return thread;
+	});
+	private final AtomicBoolean deriving = new AtomicBoolean();
 	private boolean initialized;
 
 	@Info(title = "Local VRM avatar", category = "Model",
@@ -152,37 +162,80 @@ public final class CelerantConfig extends Config {
 		Notifications.success("Celerant VRM", "VRM unloaded.");
 	}
 
-	@Button(title = "Generate Toon draft", category = "Rendering", text = "Generate",
-		description = "Create a safe .toon.json draft beside the selected VRM. Smooth normals are generated and embedded MToon data is reused; face SDF, LightMaps, ramps, and outline controls still need authored assets.")
+	@Button(title = "Generate Toon assets", category = "Rendering", text = "Generate",
+		description = "Derive a Genshin-style Toon profile from the selected VRM: LightMaps, shadow ramps, the facial shadow SDF, a metal matcap, and outline colours, written beside the model. Reading the model takes a while and nothing already there is overwritten.")
 	private void generateToonDraft() {
 		if (modelPath == null || modelPath.isBlank()) {
 			Notifications.error("Celerant Toon setup", "Choose a .vrm file first.");
 			return;
 		}
+		Path model;
 		try {
-			Path model = Path.of(modelPath.trim()).toAbsolutePath().normalize();
-			if (!Files.isRegularFile(model)
-				|| !model.getFileName().toString().toLowerCase(java.util.Locale.ROOT).endsWith(".vrm")) {
-				Notifications.error("Celerant Toon setup", "Choose an existing .vrm file first.");
-				return;
-			}
-			Path profile = model.resolveSibling(model.getFileName() + ".toon.json");
-			Files.writeString(profile, """
-				{
-				  "version": 2,
-				  "smoothNormals": "generate",
-				  "smoothNormalAngle": 45.0
-				}
-				""", StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW);
-			Notifications.success("Celerant Toon setup", "Created " + profile.getFileName()
-				+ ". Import authored face SDF, LightMaps, and ramps to complete Genshin-style shading.");
+			model = Path.of(modelPath.trim()).toAbsolutePath().normalize();
 		} catch (InvalidPathException exception) {
 			Notifications.error("Celerant Toon setup", "The selected model path is invalid.");
-		} catch (FileAlreadyExistsException exception) {
-			Notifications.error("Celerant Toon setup", "A Toon profile already exists; it was not overwritten.");
-		} catch (IOException exception) {
-			Notifications.error("Celerant Toon setup", "Could not create the Toon profile: " + exception.getMessage());
+			return;
 		}
+		if (!Files.isRegularFile(model)
+			|| !model.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".vrm")) {
+			Notifications.error("Celerant Toon setup", "Choose an existing .vrm file first.");
+			return;
+		}
+		Path profile = model.resolveSibling(model.getFileName() + ".toon.json");
+		if (Files.exists(profile)) {
+			Notifications.error("Celerant Toon setup",
+				"A Toon profile already exists; it was not overwritten.");
+			return;
+		}
+		if (!deriving.compareAndSet(false, true)) {
+			Notifications.error("Celerant Toon setup", "Toon assets are already being derived.");
+			return;
+		}
+		String stem = model.getFileName().toString();
+		stem = stem.substring(0, stem.length() - ".vrm".length()).toLowerCase(Locale.ROOT);
+		Notifications.info("Celerant Toon setup",
+			"Deriving Toon assets for " + model.getFileName() + "; this reads every texture.");
+		derive(model, profile, stem + "-toon");
+	}
+
+	/**
+	 * Derivation reads and resamples every texture in the model, which takes long enough
+	 * to stall a frame, so it runs off the render thread and reports back on it.
+	 */
+	private void derive(Path model, Path profile, String prefix) {
+		Minecraft client = Minecraft.getInstance();
+		CompletableFuture
+			.supplyAsync(() -> {
+				try {
+					return ToonAssetGenerator.generate(model, model.getParent(), prefix, profile);
+				} catch (IOException exception) {
+					throw new java.io.UncheckedIOException(exception);
+				}
+			}, DERIVATION)
+			.whenComplete((result, error) -> client.execute(() -> {
+				deriving.set(false);
+				if (error != null) {
+					Notifications.error("Celerant Toon setup",
+						"Could not derive Toon assets: " + rootCause(error).getMessage());
+					return;
+				}
+				if (result.faceProfiled()) {
+					Notifications.success("Celerant Toon setup", "Derived " + profile.getFileName()
+						+ " and the sheets for " + result.materials() + " materials.");
+					return;
+				}
+				// Reporting this matters: without the expression bindings or head
+				// weighting a face needs, there is nothing to derive a facial shadow
+				// sweep from, and a generic substitute would look like a Lambert wedge.
+				Notifications.info("Celerant Toon setup", "Derived " + profile.getFileName()
+					+ " and the sheets for " + result.materials()
+					+ " materials, but no face material could be identified,"
+					+ " so facial shadow shaping is left unconfigured.");
+			}));
+	}
+
+	private static Throwable rootCause(Throwable error) {
+		return error.getCause() == null ? error : error.getCause();
 	}
 
 	@Button(title = "Place preview here", category = "Model", text = "Place",

@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import javax.imageio.ImageIO;
 
@@ -171,7 +172,7 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		waitForNotification(context, "Choose a .vrm file first", NotificationType.ERROR);
 		clickUiCategory(context, "Rendering");
 		clearNotifications(context);
-		clickUiRowControl(context, "Generate Toon draft", "OnClick :");
+		clickUiRowControl(context, "Generate Toon assets", "OnClick :");
 		waitForNotification(context, "Choose a .vrm file first", NotificationType.ERROR);
 
 		Path draftModel = modelPath.resolveSibling("toon-draft.vrm");
@@ -180,18 +181,26 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		selectOneConfigFile(context, draftModel.toAbsolutePath());
 		clickUiCategory(context, "Rendering");
 		clearNotifications(context);
-		clickUiRowControl(context, "Generate Toon draft", "OnClick :");
-		waitForNotification(context, "Created toon-draft.vrm.toon.json", NotificationType.SUCCESS);
+		clickUiRowControl(context, "Generate Toon assets", "OnClick :");
+		waitForNotification(context, "Derived toon-draft.vrm.toon.json");
 		try {
 			String generated = Files.readString(draftProfile);
-			require(generated.contains("\"version\": 2") && generated.contains("\"smoothNormals\": \"generate\"")
-				&& !generated.contains("faceLightMap") && !generated.contains("lightMap"),
-				"generated Toon draft must not fabricate semantic maps");
+			// The sheets have to be measured from this model rather than referenced by
+			// name, so the profile must point at files that were actually written.
+			require(generated.contains("\"version\": 2")
+				&& generated.contains("\"smoothNormals\": \"generate\"")
+				&& generated.contains("\"lightMap\": \"toon-draft-toon-light-0.png\""),
+				"derived Toon profile must bind the sheets it measured");
+			for (String sheet : List.of("toon-draft-toon-ramp.png", "toon-draft-toon-ramp-hair.png",
+				"toon-draft-toon-matcap-metal.png", "toon-draft-toon-light-0.png")) {
+				require(Files.isRegularFile(draftModel.resolveSibling(sheet)),
+					"derived Toon profile must not reference a missing " + sheet);
+			}
 		} catch (IOException exception) {
-			throw new AssertionError("could not inspect generated Toon draft", exception);
+			throw new AssertionError("could not inspect the derived Toon profile", exception);
 		}
 		clearNotifications(context);
-		clickUiRowControl(context, "Generate Toon draft", "OnClick :");
+		clickUiRowControl(context, "Generate Toon assets", "OnClick :");
 		waitForNotification(context, "not overwritten", NotificationType.ERROR);
 		clickUiCategory(context, "Model");
 
@@ -667,6 +676,15 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		context.waitFor(client -> NotificationsManager.INSTANCE.getHistory().stream()
 			.anyMatch(notification -> notification.getType() == type
 				&& notification.getMessage().contains(text)), 400);
+	}
+
+	/**
+	 * Waits for a message whatever its severity, for outcomes that legitimately report
+	 * either success or a feature the model has no data for.
+	 */
+	private static void waitForNotification(ClientGameTestContext context, String text) {
+		context.waitFor(client -> NotificationsManager.INSTANCE.getHistory().stream()
+			.anyMatch(notification -> notification.getMessage().contains(text)), 400);
 	}
 
 	private record FileDialogRequest(String title, String defaultPath, List<String> patterns, String filterName) { }
@@ -1857,22 +1875,33 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 				int x = index % width;
 				int y = index / width;
 				signalPixels++;
-				if (x < width * 15 / 100 || x > width * 85 / 100 || y < height * 30 / 100) {
-					continue;
-				}
-				centeredSignals++;
 				bounds[0] = Math.min(bounds[0], x);
 				bounds[1] = Math.min(bounds[1], y);
 				bounds[2] = Math.max(bounds[2], x);
 				bounds[3] = Math.max(bounds[3], y);
+				// The camera frames the standing VRM as a centred column, so anything
+				// outside it is scene shading the character must not touch. The column
+				// has to reach high enough for the head: a full-height avatar puts its
+				// hair well above the middle of the viewport.
+				if (x < width * 15 / 100 || x > width * 85 / 100 || y < height * 15 / 100) {
+					continue;
+				}
+				centeredSignals++;
 			}
 			require(signalPixels >= Math.max(500, width * height / 1000),
 				"the local VRM must visibly change when ToonShader is disabled");
 			require(centeredSignals * 100 >= signalPixels * 95,
 				"local toon A/B changes must stay on the centered VRM (signals=" + signalPixels
-					+ ", centered=" + centeredSignals + ")");
+					+ ", centered=" + centeredSignals + ", bounds=" + Arrays.toString(bounds)
+					+ ", viewport=" + width + "x" + height + ")");
 			require(bounds[2] - bounds[0] >= width * 5 / 100 && bounds[3] - bounds[1] >= height * 15 / 100,
 				"local toon A/B must cover a readable VRM area (bounds=" + Arrays.toString(bounds) + ")");
+			// A character-confined change stays inside the silhouette and its outline, so
+			// the whole signal must remain a compact column. Scene-wide leakage would
+			// stretch these bounds across the viewport even when it stays centred.
+			require(bounds[2] - bounds[0] <= width * 60 / 100 && bounds[3] - bounds[1] <= height * 85 / 100,
+				"local toon A/B must stay confined to the VRM silhouette (bounds="
+					+ Arrays.toString(bounds) + ", viewport=" + width + "x" + height + ")");
 			System.out.println("[Celerant toon test] local VRM shader signals=" + signalPixels
 				+ ", bounds=" + Arrays.toString(bounds));
 		} catch (IOException exception) {
@@ -1910,14 +1939,40 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 				.filter(CelerantClientGameTest::isBodyMagenta).count();
 			long firstPersonHead = Arrays.stream(firstPerson.getPixels())
 				.filter(CelerantClientGameTest::isHeadMagenta).count();
-			require(thirdPersonBody >= 50, "third-person VRM body must be visible");
-			require(thirdPersonHead >= 50, "third-person VRM head must be visible");
-			require(firstPersonBody >= 50, "first-person VRM body must remain visible");
+			require(thirdPersonBody >= 50,
+				"third-person VRM body must be visible (" + dominantColors(thirdPerson) + ")");
+			require(thirdPersonHead >= 50,
+				"third-person VRM head must be visible (" + dominantColors(thirdPerson) + ")");
+			require(firstPersonBody >= 50,
+				"first-person VRM body must remain visible (" + dominantColors(firstPerson) + ")");
 			require(firstPersonHead == 0,
 				"first-person Auto filtering must remove head-weighted geometry (pixels=" + firstPersonHead + ")");
 		} catch (IOException exception) {
 			throw new AssertionError("could not inspect first-person Auto filtering screenshots", exception);
 		}
+	}
+
+	/**
+	 * Summarises the pinkish pixels a screenshot holds so a failed magenta expectation
+	 * reports the colours the renderer actually produced instead of only a count.
+	 */
+	private static String dominantColors(NativeImage image) {
+		Map<Integer, Integer> counts = new HashMap<>();
+		for (int pixel : image.getPixels()) {
+			int blue = pixel & 0xFF;
+			int green = pixel >>> 8 & 0xFF;
+			int red = pixel >>> 16 & 0xFF;
+			if (red < 40 || red <= green + 20) {
+				continue;
+			}
+			int key = (red & 0xF8) << 16 | (green & 0xF8) << 8 | blue & 0xF8;
+			counts.merge(key, 1, Integer::sum);
+		}
+		return counts.entrySet().stream()
+			.sorted(Map.Entry.<Integer, Integer>comparingByValue().reversed())
+			.limit(8)
+			.map(entry -> String.format(Locale.ROOT, "#%06X x%d", entry.getKey(), entry.getValue()))
+			.collect(Collectors.joining(", "));
 	}
 
 	private static void assertMagentaMasksDiffer(Path firstPath, Path secondPath, String message) {
@@ -2004,11 +2059,17 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		return isMagenta(pixel) && red - blue >= 30;
 	}
 
+	/**
+	 * The head material is authored with equal red and blue and no green, so it is told
+	 * apart from the body by that balance instead of an exact hue. Toon shading tints the
+	 * whole model with the scene's warm daylight, which moves red and blue together and
+	 * leaves the two materials separated by the same margin {@link #isBodyMagenta} uses.
+	 */
 	private static boolean isHeadMagenta(int pixel) {
 		int blue = pixel & 0xFF;
 		int green = pixel >>> 8 & 0xFF;
 		int red = pixel >>> 16 & 0xFF;
-		return isMagenta(pixel) && green < 30 && Math.abs(red - blue) <= 12;
+		return isMagenta(pixel) && green < 20 && Math.abs(red - blue) < 30;
 	}
 
 	private static void writeFixtures(Path packRoot, Path modelPath) {

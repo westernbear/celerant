@@ -55,6 +55,10 @@ python3 -m venv .venv && .venv/bin/pip install pillow numpy
 .venv/bin/python scripts/check_vrm_corpus.py /path/to/vrms --build /tmp/out
 ```
 
+The same derivation is available in game. **Generate Toon assets** under **Rendering** writes the profile and its sheets beside the selected `.vrm`, so a model can be profiled without a Python toolchain. It only runs when you press it, never overwrites anything already there, and runs off the render thread because it reads and resamples every texture in the model. When no face material can be identified it says so and leaves facial shadow shaping unconfigured, exactly as the script does.
+
+Both paths share the same algorithms, down to the arithmetic precision, the order values accumulate in, and the eight-bit resampling pipeline. MCglTF's `ToonAssetParityTest` derives the example model both ways and requires every sheet to agree; most come out byte-identical and none may differ by more than one level on more than a handful of channels. Without that gate the two would drift and a model profiled in game would shade differently from the same model profiled on the command line.
+
 Users must verify the licenses and terms of their VRM models and installed ShaderPacks themselves.
 
 Celerant is distributed under AGPL-3.0-only per the repository `LICENSE`.

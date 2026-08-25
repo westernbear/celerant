@@ -28,7 +28,12 @@ GRADLE_EXTRA=()
 if [[ -n "${LOCAL_MCGLTF:-}" ]]; then
 	GRADLE_EXTRA+=(-PlocalMcgltf="$LOCAL_MCGLTF")
 fi
-systemd-run --user --scope -p MemoryHigh=9G -p MemoryMax=10G -p MemorySwapMax=0 -- \
+# Defaults follow AGENTS.md; lower them together with TOON_MIN_AVAILABLE_KIB when the
+# host cannot spare 10 GiB, since a scope larger than MemAvailable only trades a clean
+# limit for host swapping.
+MEM_HIGH=${TOON_MEMORY_HIGH:-9G}
+MEM_MAX=${TOON_MEMORY_MAX:-10G}
+systemd-run --user --scope -p MemoryHigh="$MEM_HIGH" -p MemoryMax="$MEM_MAX" -p MemorySwapMax=0 -- \
 	env JAVA_TOOL_OPTIONS="-Xmx3G" \
 	xvfb-run -a -s "-screen 0 1280x720x24" \
 	./gradlew runClientGameTest --no-daemon --max-workers=1 "${GRADLE_EXTRA[@]}"

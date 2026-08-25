@@ -195,6 +195,51 @@ def gaussian(x: np.ndarray, y: np.ndarray, cx: float, cy: float, rx: float, ry: 
 	return np.exp(-0.5 * (((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2))
 
 
+def weighted_center(mask: np.ndarray, x: np.ndarray, y: np.ndarray, weights: np.ndarray) -> tuple[float, float] | None:
+	"""Centre of mass for a boolean mask in face-normalised coordinates."""
+	selected = mask & (weights > 0.0)
+	if not selected.any():
+		return None
+	weight = weights[selected]
+	total = float(weight.sum())
+	if total <= 0.0:
+		return None
+	return (
+		float(np.average(x[selected], weights=weight)),
+		float(np.average(y[selected], weights=weight)),
+	)
+
+
+def face_feature_centers(face: np.ndarray, centered_x: np.ndarray, y: np.ndarray,
+	luminance: np.ndarray, saturation: np.ndarray) -> tuple[
+		tuple[float, float], tuple[float, float], tuple[float, float], tuple[float, float]]:
+	"""Place blush and eye masks from authored albedo on the face atlas, not constants.
+
+	Eyes are the dark, saturated islands in the upper face. Cheeks are the neutral-skin
+	lower-outer regions once the face bounds come from geometry rather than the whole
+	texture.
+	"""
+	eye_candidates = face & (y > 0.35) & (y < 0.65) & (luminance < 0.72) & (saturation > 0.08)
+	eye_weight = np.maximum(0.01, 0.8 - luminance + saturation)
+	eye_left = weighted_center(eye_candidates & (centered_x < 0.0), centered_x, y, eye_weight)
+	eye_right = weighted_center(eye_candidates & (centered_x > 0.0), centered_x, y, eye_weight)
+	if eye_left is None:
+		eye_left = (-0.28, 0.52)
+	if eye_right is None:
+		eye_right = (0.28, 0.52)
+
+	cheek_candidates = face & (np.abs(centered_x) > 0.18) & (y > 0.22) & (y < 0.48)
+	cheek_candidates &= (saturation < 0.28) & (luminance > 0.42)
+	cheek_weight = np.abs(centered_x) * np.clip(0.45 - np.abs(y - 0.33), 0.05, 0.45)
+	blush_left = weighted_center(cheek_candidates & (centered_x < 0.0), centered_x, y, cheek_weight)
+	blush_right = weighted_center(cheek_candidates & (centered_x > 0.0), centered_x, y, cheek_weight)
+	if blush_left is None:
+		blush_left = (-0.38, 0.34)
+	if blush_right is None:
+		blush_right = (0.38, 0.34)
+	return eye_left, eye_right, blush_left, blush_right
+
+
 LIGHT_PARAMETERS = {
 	# Genshin ILM convention: red is specular intensity and doubles as the metal
 	# selector above 0.9, green is the shadow threshold where 0.5 means "let Lambert
@@ -566,14 +611,20 @@ def write_face_assets(document: dict, binary: bytes, material_index: int,
 	opposite = np.clip(0.5 - 0.5 * blended_sin, 0.0, 1.0)
 	direct_sdf = np.where(face, direct, 0.0)
 	opposite_sdf = np.where(face, opposite, 0.0)
+	rgb = source[..., :3].astype(np.float32) / 255.0
+	luminance = rgb @ np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
+	saturation = rgb.max(axis=-1) - rgb.min(axis=-1)
+	(left_eye, right_eye, left_blush, right_blush) = face_feature_centers(
+		face, centered_x, y, luminance, saturation
+	)
 	blush = np.maximum(
-		gaussian(centered_x, y, -0.38, 0.34, 0.18, 0.08),
-		gaussian(centered_x, y, 0.38, 0.34, 0.18, 0.08),
+		gaussian(centered_x, y, *left_blush, 0.18, 0.08),
+		gaussian(centered_x, y, *right_blush, 0.18, 0.08),
 	)
 	blush = np.where(face, np.clip(blush * 0.85, 0.0, 1.0), 0.0)
 	eye_mask = np.maximum(
-		gaussian(centered_x, y, -0.28, 0.52, 0.14, 0.06),
-		gaussian(centered_x, y, 0.28, 0.52, 0.14, 0.06),
+		gaussian(centered_x, y, *left_eye, 0.14, 0.06),
+		gaussian(centered_x, y, *right_eye, 0.14, 0.06),
 	)
 	force_lit = np.where(face, np.clip(eye_mask * 0.7, 0.0, 1.0), 1.0)
 
@@ -727,6 +778,7 @@ def generate(model: Path, root: Path, prefix: str, sidecar: Path) -> None:
 			# Screen-space outlines resolve to roughly `2 * outlineWidth` pixels, so
 			# anything below about 0.5 breaks up into a dotted line.
 			"outlineWidth": 1.10 if category in {"hair", "cloth"} else 0.90,
+			"outlineZOffset": 1.0,
 			"outlineColor": outline_tint(document, binary, index),
 			# The reference leaves the terminator at half Lambert and widens it with
 			# smoothness alone; the ramp gradient is only visible across this band.
