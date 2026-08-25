@@ -1,0 +1,299 @@
+{
+  "version": 2,
+  "head": {
+    "name": "J_Bip_C_Head",
+    "forward": [
+      0,
+      0,
+      -1
+    ],
+    "right": [
+      1,
+      0,
+      0
+    ]
+  },
+  "lightDirectionMultiplier": [
+    1.0,
+    0.55,
+    1.0
+  ],
+  "smoothNormals": "generate",
+  "smoothNormalAngle": 180,
+  "baseColorScale": 0.62,
+  "rampTexture": "sendagaya-toon-ramp.png",
+  "materials": [
+    {
+      "index": 0,
+      "lightMap": "sendagaya-toon-light-0.png",
+      "outline": true,
+      "outlineMode": "screen",
+      "outlineWidth": 0.35,
+      "outlineColor": [
+        0.22,
+        0.18,
+        0.22,
+        1.0
+      ],
+      "shadowSmoothness": 0.08
+    },
+    {
+      "index": 1,
+      "lightMap": "sendagaya-toon-light-1.png",
+      "outline": true,
+      "outlineMode": "screen",
+      "outlineWidth": 0.35,
+      "outlineColor": [
+        0.22,
+        0.18,
+        0.22,
+        1.0
+      ],
+      "shadowSmoothness": 0.08
+    },
+    {
+      "index": 2,
+      "lightMap": "sendagaya-toon-light-2.png",
+      "outline": true,
+      "outlineMode": "screen",
+      "outlineWidth": 0.35,
+      "outlineColor": [
+        0.22,
+        0.18,
+        0.22,
+        1.0
+      ],
+      "shadowSmoothness": 0.08
+    },
+    {
+      "index": 3,
+      "lightMap": "sendagaya-toon-light-3.png",
+      "outline": true,
+      "outlineMode": "screen",
+      "outlineWidth": 0.35,
+      "outlineColor": [
+        0.22,
+        0.18,
+        0.22,
+        1.0
+      ],
+      "shadowSmoothness": 0.08
+    },
+    {
+      "index": 4,
+      "lightMap": "sendagaya-toon-light-4.png",
+      "outline": true,
+      "outlineMode": "screen",
+      "outlineWidth": 0.35,
+      "outlineColor": [
+        0.22,
+        0.18,
+        0.22,
+        1.0
+      ],
+      "shadowSmoothness": 0.08
+    },
+    {
+      "index": 5,
+      "lightMap": "sendagaya-toon-light-5.png",
+      "outline": true,
+      "outlineMode": "screen",
+      "outlineWidth": 0.35,
+      "outlineColor": [
+        0.22,
+        0.18,
+        0.22,
+        1.0
+      ],
+      "shadowSmoothness": 0.08
+    },
+    {
+      "index": 6,
+      "lightMap": "sendagaya-toon-light-6.png",
+      "outline": true,
+      "outlineMode": "screen",
+      "outlineWidth": 0.35,
+      "outlineColor": [
+        0.22,
+        0.18,
+        0.22,
+        1.0
+      ],
+      "shadowSmoothness": 0.08
+    },
+    {
+      "index": 7,
+      "lightMap": "sendagaya-toon-light-7.png",
+      "outline": true,
+      "outlineMode": "screen",
+      "outlineWidth": 0.35,
+      "outlineColor": [
+        0.22,
+        0.18,
+        0.22,
+        1.0
+      ],
+      "shadowSmoothness": 0.12,
+      "face": true,
+      "faceSdfLayout": "directional-rg",
+      "faceLightMap": "sendagaya-toon-face.png",
+      "faceShadow": "sendagaya-toon-face-shadow.png",
+      "rampTexture": "sendagaya-toon-ramp.png",
+      "blushIntensity": 0.45,
+      "faceShadowStrength": 0.75
+    },
+    {
+      "index": 8,
+      "lightMap": "sendagaya-toon-light-8.png",
+      "outline": true,
+      "outlineMode": "screen",
+      "outlineWidth": 0.35,
+      "outlineColor": [
+        0.22,
+        0.18,
+        0.22,
+        1.0
+      ],
+      "shadowSmoothness": 0.08
+    },
+    {
+      "index": 9,
+      "lightMap": "sendagaya-toon-light-9.png",
+      "outline": true,
+      "outlineMode": "screen",
+      "outlineWidth": 0.35,
+      "outlineColor": [
+        0.22,
+        0.18,
+        0.22,
+        1.0
+      ],
+      "shadowSmoothness": 0.08,
+      "rampTexture": "sendagaya-toon-ramp.png"
+    },
+    {
+      "index": 10,
+      "lightMap": "sendagaya-toon-light-10.png",
+      "outline": true,
+      "outlineMode": "screen",
+      "outlineWidth": 0.45,
+      "outlineColor": [
+        0.22,
+        0.18,
+        0.22,
+        1.0
+      ],
+      "shadowSmoothness": 0.08,
+      "rampTexture": "sendagaya-toon-ramp.png",
+      "rimIntensity": 0.4,
+      "rimOffset": 0.1,
+      "rimPower": 2.5
+    },
+    {
+      "index": 11,
+      "lightMap": "sendagaya-toon-light-11.png",
+      "outline": true,
+      "outlineMode": "screen",
+      "outlineWidth": 0.35,
+      "outlineColor": [
+        0.22,
+        0.18,
+        0.22,
+        1.0
+      ],
+      "shadowSmoothness": 0.08,
+      "matcapTexture": "sendagaya-toon-matcap-metal.png",
+      "metalSpecular": 0.9,
+      "metallic": true
+    },
+    {
+      "index": 12,
+      "lightMap": "sendagaya-toon-light-12.png",
+      "outline": true,
+      "outlineMode": "screen",
+      "outlineWidth": 0.45,
+      "outlineColor": [
+        0.22,
+        0.18,
+        0.22,
+        1.0
+      ],
+      "shadowSmoothness": 0.08,
+      "rampTexture": "sendagaya-toon-ramp.png",
+      "rimIntensity": 0.4,
+      "rimOffset": 0.1,
+      "rimPower": 2.5
+    },
+    {
+      "index": 13,
+      "lightMap": "sendagaya-toon-light-13.png",
+      "outline": true,
+      "outlineMode": "screen",
+      "outlineWidth": 0.35,
+      "outlineColor": [
+        0.22,
+        0.18,
+        0.22,
+        1.0
+      ],
+      "shadowSmoothness": 0.08,
+      "matcapTexture": "sendagaya-toon-matcap-metal.png",
+      "metalSpecular": 0.9,
+      "metallic": true
+    },
+    {
+      "index": 14,
+      "lightMap": "sendagaya-toon-light-14.png",
+      "outline": true,
+      "outlineMode": "screen",
+      "outlineWidth": 0.45,
+      "outlineColor": [
+        0.22,
+        0.18,
+        0.22,
+        1.0
+      ],
+      "shadowSmoothness": 0.08,
+      "rampTexture": "sendagaya-toon-ramp-hair.png",
+      "rimIntensity": 0.55,
+      "rimOffset": 0.12,
+      "rimPower": 3.0
+    },
+    {
+      "index": 15,
+      "lightMap": "sendagaya-toon-light-15.png",
+      "outline": true,
+      "outlineMode": "screen",
+      "outlineWidth": 0.45,
+      "outlineColor": [
+        0.22,
+        0.18,
+        0.22,
+        1.0
+      ],
+      "shadowSmoothness": 0.08,
+      "rampTexture": "sendagaya-toon-ramp-hair.png",
+      "rimIntensity": 0.55,
+      "rimOffset": 0.12,
+      "rimPower": 3.0
+    },
+    {
+      "index": 16,
+      "lightMap": "sendagaya-toon-light-16.png",
+      "outline": true,
+      "outlineMode": "screen",
+      "outlineWidth": 0.45,
+      "outlineColor": [
+        0.22,
+        0.18,
+        0.22,
+        1.0
+      ],
+      "shadowSmoothness": 0.08,
+      "rampTexture": "sendagaya-toon-ramp-hair.png",
+      "rimIntensity": 0.55,
+      "rimOffset": 0.12,
+      "rimPower": 3.0
+    }
+  ]
+}

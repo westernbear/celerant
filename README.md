@@ -4,7 +4,7 @@ Load local VRM 0.x/1.0 models in Minecraft 26.2 Fabric with MCglTF, and optional
 
 ![Celerant ToonShader example with Sendagaya Shino](docs/images/example-sendagaya-shino.png)
 
-The example model is VRoid Project **Sendagaya Shino** ([CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/), [terms of use](https://vroid.pixiv.help/hc/en-us/articles/4402614652569-Do-VRoid-Studio-s-sample-models-come-with-conditions-of-use) / [OpenGameArt mirror](https://opengameart.org/content/vroid-studio-cc0-models)). The image above was captured with Celerant + MCglTF ToonShader and a current Modrinth Iris ShaderPack (BSL) active. The `.vrm` itself is not vendored in this repository.
+The example model is VRoid Project **Sendagaya Shino** ([CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/), [terms of use](https://vroid.pixiv.help/hc/en-us/articles/4402614652569-Do-VRoid-Studio-s-sample-models-come-with-conditions-of-use) / [OpenGameArt mirror](https://opengameart.org/content/vroid-studio-cc0-models)). The still above was captured with Celerant + MCglTF ToonShader under an active Complementary Unbound Iris ShaderPack, using the generated LightMap / face-SDF / ramp sidecar in [`docs/examples/sendagaya-shino/`](docs/examples/sendagaya-shino/). The `.vrm` itself is not vendored; regenerate maps with `generate_toon_assets.py` after download. Visual target: official [`UnityGenshinToonShader`](https://github.com/kaze-mio/UnityGenshinToonShader) `Images/image_0.png` (soft cheek SDF, warm lit albedo, thin outlines, bounded rim).
 
 ## Required mods
 

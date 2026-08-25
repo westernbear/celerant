@@ -1,0 +1,2 @@
+# Ignore the large CC0 VRM binary; regenerate maps with generate_toon_assets.py after download.
+Sendagaya_Shino.vrm
