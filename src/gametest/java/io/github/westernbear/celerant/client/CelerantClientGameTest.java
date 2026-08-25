@@ -54,6 +54,10 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		"org.polyfrost.oneconfig.internal.ui.compose.impls.OneConfigUIScreen";
 	private static final String LOCAL_VISUAL_VRM = "_local_visual.vrm";
 	private static final String DISABLE_TOON_SHADER_PROPERTY = "celerant.testing.disableToonShader";
+	private static final int RESTORED_TOLERANCE_RGB_DISTANCE = 18;
+	private static final long BURST_WINDOW_MILLIS = 5000;
+	private static final int BURST_MAX_FRAMES = 8;
+	private static final String SHADERPACK_OPTIONS_ENV = "CELERANT_SHADERPACK_OPTIONS";
 	private static final FrameTimeRecorder MATRIX_FRAME_TIMES = new FrameTimeRecorder();
 	private static boolean matrixFrameRecorderRegistered;
 	private static volatile Path nextOneConfigFileSelection;
@@ -1010,7 +1014,7 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 				context.getInput().lookAt(180.0F, 8.0F);
 				context.getInput().pressKey(options -> options.keyToggleGui);
 				guiToggled = true;
-				MatrixState baseline = captureMatrixState(context, null, false, false,
+				MatrixState baseline = captureMatrixState(context, null, false, false, true,
 					"celerant-shader-matrix-baseline-off", true);
 				writeMatrixReportStart(report, sources.size(), baseline);
 
@@ -1085,15 +1089,17 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 			error = addProblem(error, "snapshot debug dump", exception);
 		}
 
-		MatrixState on = captureMatrixState(context, packName, true, false, prefix + "-on", true);
+		MatrixState on = captureMatrixState(context, packName, true, false, true, prefix + "-on", true);
 		ShaderDumpStats dumpStats = new ShaderDumpStats(0, 0);
 		try {
 			dumpStats = countPatchedEntityShaders(gameDirectory.resolve("patched_shaders"), dumpSnapshot);
 		} catch (Exception exception) {
 			error = addProblem(error, "inspect debug dump", exception);
 		}
-		MatrixState off = captureMatrixState(context, packName, true, true, prefix + "-off", true);
-		MatrixState restored = captureMatrixState(context, packName, true, false, prefix + "-restored", false);
+		// Keep one ShaderPack pipeline alive so ON/OFF/restored differ only by ToonShader state.
+		MatrixState off = captureMatrixState(context, packName, true, true, false, prefix + "-off", true);
+		MatrixState restored = captureMatrixState(context, packName, true, false, false,
+			prefix + "-restored", false);
 		try {
 			writeRestoredToonEvidence(gameDirectory, index, restored.image());
 			captureDirectionalToon(context, world, connection, gameDirectory, index, prefix);
@@ -1101,9 +1107,14 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 			error = addProblem(error, "visual evidence captures", exception);
 		}
 
-		ToonSignal toonSignal = new ToonSignal(false, 0, 0, "", 0, 0, 0);
+		ToonSignal toonSignal = new ToonSignal(false, 0, 0, "", 0, 0, 0,
+			Double.NaN, false, 0, "");
 		try {
 			toonSignal = measureToonSignal(on.image(), off.image(), restored.image());
+			if (!toonSignal.sceneStable()) {
+				error = addProblem(error, "restored scene changed coherently (pixels="
+					+ toonSignal.sceneChangePixels() + ", bounds=" + toonSignal.sceneChangeBounds() + ")");
+			}
 		} catch (Exception exception) {
 			error = addProblem(error, "toon signal", exception);
 		}
@@ -1219,19 +1230,20 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 	}
 
 	private static MatrixState captureMatrixState(ClientGameTestContext context, String packName,
-		boolean shadersEnabled, boolean toonDisabled, String screenshotName, boolean measureFrames) {
+		boolean shadersEnabled, boolean toonDisabled, boolean reloadShaderPack,
+		String screenshotName, boolean measureFrames) {
 		long[] reloadNanos = {-1L};
 		String error = "";
 		try {
+			setToonShaderDisabled(context, toonDisabled);
 			context.runOnClient(client -> {
 				client.setScreenAndShow(null);
-				if (toonDisabled) {
-					System.setProperty(DISABLE_TOON_SHADER_PROPERTY, "true");
-				} else {
-					System.clearProperty(DISABLE_TOON_SHADER_PROPERTY);
+				if (!reloadShaderPack) {
+					return;
 				}
 				if (packName != null) {
 					Iris.getIrisConfig().setShaderPackName(packName);
+					Iris.getShaderPackOptionQueue().putAll(shaderPackOptions());
 				}
 				Iris.getIrisConfig().setShadersEnabled(shadersEnabled);
 				Iris.getIrisConfig().setDebugEnabled(true);
@@ -1243,9 +1255,11 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 					reloadNanos[0] = System.nanoTime() - started;
 				}
 			});
-			context.waitFor(client -> Iris.getStoredError().isPresent() || !shadersEnabled
-				|| packName.equals(Iris.getCurrentPackName())
-					&& Iris.getPipelineManager().getPipeline().isPresent(), 1200);
+			if (reloadShaderPack) {
+				context.waitFor(client -> Iris.getStoredError().isPresent() || !shadersEnabled
+					|| packName.equals(Iris.getCurrentPackName())
+						&& Iris.getPipelineManager().getPipeline().isPresent(), 1200);
+			}
 		} catch (Exception | AssertionError exception) {
 			error = addProblem(error, "reload", exception);
 		}
@@ -1266,8 +1280,10 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		}
 
 		Path image = null;
+		BurstStats burst = BurstStats.EMPTY;
 		try {
 			image = context.takeScreenshot(screenshotName);
+			burst = captureBurstFrames(context, screenshotName, image);
 		} catch (Exception | AssertionError exception) {
 			error = addProblem(error, "capture", exception);
 		}
@@ -1286,7 +1302,66 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 			error = addProblem(error, "read Iris error", exception);
 		}
 		return new MatrixState(reloadNanos[0] < 0 ? Double.NaN : reloadNanos[0] / 1_000_000.0,
-			frames, image, irisError, packInUse, error);
+			frames, image, irisError, packInUse, burst, error);
+	}
+
+	private static BurstStats captureBurstFrames(ClientGameTestContext context, String prefix, Path base)
+		throws IOException {
+		if (base == null) {
+			return BurstStats.EMPTY;
+		}
+		int[] basePixels;
+		int width;
+		int height;
+		try (NativeImage image = NativeImage.read(Files.newInputStream(base))) {
+			basePixels = image.getPixels();
+			width = image.getWidth();
+			height = image.getHeight();
+		}
+		double worstRatio = 1.0;
+		int maxDelta = 0;
+		int captured = 0;
+		long deadline = System.currentTimeMillis() + BURST_WINDOW_MILLIS;
+		while (captured < BURST_MAX_FRAMES && System.currentTimeMillis() < deadline) {
+			captured++;
+			Path frame = context.takeScreenshot(prefix + "-burst-" + String.format("%02d", captured));
+			try (NativeImage burstImage = NativeImage.read(Files.newInputStream(frame))) {
+				if (burstImage.getWidth() != width || burstImage.getHeight() != height) {
+					throw new IOException("burst viewport changed");
+				}
+				int[] pixels = burstImage.getPixels();
+				int stable = 0;
+				for (int index = 0; index < pixels.length; index++) {
+					int delta = rgbDistance(basePixels[index], pixels[index]);
+					maxDelta = Math.max(maxDelta, delta);
+					stable += delta <= RESTORED_TOLERANCE_RGB_DISTANCE ? 1 : 0;
+				}
+				worstRatio = Math.min(worstRatio, (double) stable / pixels.length);
+			}
+		}
+		return new BurstStats(captured, worstRatio, maxDelta);
+	}
+
+	private static Map<String, String> shaderPackOptions() {
+		String raw = System.getenv(SHADERPACK_OPTIONS_ENV);
+		if (raw == null || raw.isBlank()) {
+			return Map.of();
+		}
+		Map<String, String> options = new HashMap<>();
+		for (String token : raw.trim().split("\\s+")) {
+			int separator = token.indexOf('=');
+			if (separator < 0) {
+				boolean enabled = !token.startsWith("!");
+				String name = enabled ? token : token.substring(1);
+				require(!name.isBlank(), SHADERPACK_OPTIONS_ENV + " contains an empty option");
+				options.put(name, Boolean.toString(enabled));
+				continue;
+			}
+			require(separator > 0 && separator < token.length() - 1,
+				SHADERPACK_OPTIONS_ENV + " contains an invalid option: " + token);
+			options.put(token.substring(0, separator), token.substring(separator + 1));
+		}
+		return options;
 	}
 
 	private static FrameStats captureFrameStats(ClientGameTestContext context) {
@@ -1357,45 +1432,155 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 			int[] onPixels = on.getPixels();
 			int[] offPixels = off.getPixels();
 			int[] restoredPixels = restored.getPixels();
-			int signalPixels = 0;
-			int centeredSignals = 0;
-			int restoredComparedPixels = 0;
-			int restoredStablePixels = 0;
-			int restoredMaxDelta = 0;
-			int[] bounds = {width, height, -1, -1};
+			int[] idleDeltas = new int[onPixels.length];
+			byte[] signalCandidates = new byte[onPixels.length];
+			byte[] changedCandidates = new byte[onPixels.length];
+			byte[] sceneChangeCandidates = new byte[onPixels.length];
 			for (int index = 0; index < onPixels.length; index++) {
 				int idleDelta = rgbDistance(onPixels[index], restoredPixels[index]);
 				int toonDelta = Math.min(rgbDistance(onPixels[index], offPixels[index]),
 					rgbDistance(restoredPixels[index], offPixels[index]));
-				if (toonDelta >= 36) {
-					restoredComparedPixels++;
-					restoredMaxDelta = Math.max(restoredMaxDelta, idleDelta);
-					if (idleDelta <= 18) {
-						restoredStablePixels++;
+				idleDeltas[index] = idleDelta;
+				sceneChangeCandidates[index] = (byte) (idleDelta > 18 ? 1 : 0);
+				changedCandidates[index] = (byte) (toonDelta >= 36 ? 1 : 0);
+				signalCandidates[index] = (byte) (idleDelta <= 18
+					&& toonDelta >= Math.max(36, idleDelta * 3) ? 1 : 0);
+			}
+
+			// Temporal ShaderPack effects create disconnected noise; the rendered VRM is one coherent change.
+			int[] queue = new int[onPixels.length];
+			PixelComponent signal = largestComponent(signalCandidates, width, height, idleDeltas, queue);
+			PixelComponent restoredSignal = signal.seed() < 0
+				? PixelComponent.empty(width, height)
+				: floodComponent(changedCandidates, width, height, signal.seed(), idleDeltas, queue);
+			PixelComponent sceneChange = largestComponent(sceneChangeCandidates, width, height, idleDeltas, queue);
+			double sceneStructureCorrelation = sceneStructureCorrelation(onPixels, restoredPixels, width, height);
+			boolean detected = signal.pixels() >= Math.max(500, width * height / 1000)
+				&& signal.centeredPixels() * 100 >= signal.pixels() * 95
+				&& signal.maxX() - signal.minX() >= width * 5 / 100
+				&& signal.maxY() - signal.minY() >= height * 15 / 100;
+			// ponytail: block correlation removes temporal grain/exposure; add motion compensation if scenes animate.
+			boolean sceneStable = sceneChange.pixels() <= width * height / 100
+				|| sceneStructureCorrelation >= 0.90;
+			return new ToonSignal(detected, signal.pixels(), signal.centeredPixels(), signal.bounds(),
+				restoredSignal.pixels(), restoredSignal.stablePixels(), restoredSignal.maxDelta(),
+				sceneStructureCorrelation, sceneStable, sceneChange.pixels(), sceneChange.bounds());
+		}
+	}
+
+	private static double sceneStructureCorrelation(int[] first, int[] second, int width, int height) {
+		int blockSize = 16;
+		int blocks = width / blockSize * (height / blockSize);
+		if (blocks < 2) {
+			return -1.0;
+		}
+		double[] firstSums = new double[3];
+		double[] secondSums = new double[3];
+		double[] firstSquares = new double[3];
+		double[] secondSquares = new double[3];
+		double[] products = new double[3];
+		for (int blockY = 0; blockY + blockSize <= height; blockY += blockSize) {
+			for (int blockX = 0; blockX + blockSize <= width; blockX += blockSize) {
+				long[] firstBlock = new long[3];
+				long[] secondBlock = new long[3];
+				for (int y = blockY; y < blockY + blockSize; y++) {
+					for (int x = blockX; x < blockX + blockSize; x++) {
+						int index = y * width + x;
+						for (int channel = 0; channel < 3; channel++) {
+							int shift = 16 - channel * 8;
+							firstBlock[channel] += first[index] >>> shift & 0xFF;
+							secondBlock[channel] += second[index] >>> shift & 0xFF;
+						}
 					}
 				}
-				if (idleDelta > 18 || toonDelta < Math.max(36, idleDelta * 3)) {
-					continue;
+				for (int channel = 0; channel < 3; channel++) {
+					firstSums[channel] += firstBlock[channel];
+					secondSums[channel] += secondBlock[channel];
+					firstSquares[channel] += firstBlock[channel] * firstBlock[channel];
+					secondSquares[channel] += secondBlock[channel] * secondBlock[channel];
+					products[channel] += firstBlock[channel] * secondBlock[channel];
 				}
-				int x = index % width;
-				int y = index / width;
-				signalPixels++;
-				if (x < width * 15 / 100 || x > width * 85 / 100 || y < height * 30 / 100) {
-					continue;
-				}
-				centeredSignals++;
-				bounds[0] = Math.min(bounds[0], x);
-				bounds[1] = Math.min(bounds[1], y);
-				bounds[2] = Math.max(bounds[2], x);
-				bounds[3] = Math.max(bounds[3], y);
 			}
-			boolean detected = signalPixels >= Math.max(500, width * height / 1000)
-				&& centeredSignals * 100 >= signalPixels * 95
-				&& bounds[2] - bounds[0] >= width * 5 / 100
-				&& bounds[3] - bounds[1] >= height * 15 / 100;
-			return new ToonSignal(detected, signalPixels, centeredSignals, Arrays.toString(bounds),
-				restoredComparedPixels, restoredStablePixels, restoredMaxDelta);
 		}
+		double minimum = 1.0;
+		for (int channel = 0; channel < 3; channel++) {
+			double firstVariance = blocks * firstSquares[channel] - firstSums[channel] * firstSums[channel];
+			double secondVariance = blocks * secondSquares[channel] - secondSums[channel] * secondSums[channel];
+			if (firstVariance <= 0.0 || secondVariance <= 0.0) {
+				return -1.0;
+			}
+			double covariance = blocks * products[channel] - firstSums[channel] * secondSums[channel];
+			minimum = Math.min(minimum, covariance / Math.sqrt(firstVariance * secondVariance));
+		}
+		return minimum;
+	}
+
+	private static PixelComponent largestComponent(byte[] candidates, int width, int height,
+		int[] idleDeltas, int[] queue) {
+		PixelComponent largest = PixelComponent.empty(width, height);
+		for (int seed = 0; seed < candidates.length; seed++) {
+			if (candidates[seed] == 0) {
+				continue;
+			}
+			PixelComponent component = floodComponent(candidates, width, height, seed, idleDeltas, queue);
+			if (component.pixels() > largest.pixels()) {
+				largest = component;
+			}
+		}
+		return largest;
+	}
+
+	private static PixelComponent floodComponent(byte[] candidates, int width, int height, int seed,
+		int[] idleDeltas, int[] queue) {
+		if (seed < 0 || candidates[seed] == 0) {
+			return PixelComponent.empty(width, height);
+		}
+		int read = 0;
+		int write = 0;
+		int pixels = 0;
+		int centeredPixels = 0;
+		int stablePixels = 0;
+		int maxDelta = 0;
+		int minX = width;
+		int minY = height;
+		int maxX = -1;
+		int maxY = -1;
+		candidates[seed] = 0;
+		queue[write++] = seed;
+		while (read < write) {
+			int index = queue[read++];
+			int x = index % width;
+			int y = index / width;
+			int idleDelta = idleDeltas[index];
+			pixels++;
+			stablePixels += idleDelta <= 18 ? 1 : 0;
+			maxDelta = Math.max(maxDelta, idleDelta);
+			minX = Math.min(minX, x);
+			minY = Math.min(minY, y);
+			maxX = Math.max(maxX, x);
+			maxY = Math.max(maxY, y);
+			if (x >= width * 15 / 100 && x <= width * 85 / 100 && y >= height * 30 / 100) {
+				centeredPixels++;
+			}
+			if (x > 0 && candidates[index - 1] != 0) {
+				candidates[index - 1] = 0;
+				queue[write++] = index - 1;
+			}
+			if (x + 1 < width && candidates[index + 1] != 0) {
+				candidates[index + 1] = 0;
+				queue[write++] = index + 1;
+			}
+			if (y > 0 && candidates[index - width] != 0) {
+				candidates[index - width] = 0;
+				queue[write++] = index - width;
+			}
+			if (y + 1 < height && candidates[index + width] != 0) {
+				candidates[index + width] = 0;
+				queue[write++] = index + width;
+			}
+		}
+		return new PixelComponent(seed, pixels, centeredPixels, minX, minY, maxX, maxY,
+			stablePixels, maxDelta);
 	}
 
 	private static String sha256(Path path) throws IOException, NoSuchAlgorithmException {
@@ -2115,14 +2300,30 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 	}
 
 	private record MatrixState(double reloadMs, FrameStats frames, Path image, String irisError,
-		boolean packInUse, String error) {
+		boolean packInUse, BurstStats burst, String error) {
+	}
+
+	private record BurstStats(int frames, double minStableRatio, int maxRgbDelta) {
+		static final BurstStats EMPTY = new BurstStats(0, Double.NaN, 0);
 	}
 
 	private record ShaderDumpStats(int patched, int total) {
 	}
 
 	private record ToonSignal(boolean detected, int signalPixels, int centeredPixels, String bounds,
-		int restoredComparedPixels, int restoredStablePixels, int restoredMaxDelta) {
+		int restoredComparedPixels, int restoredStablePixels, int restoredMaxDelta,
+		double sceneStructureCorrelation, boolean sceneStable, int sceneChangePixels, String sceneChangeBounds) {
+	}
+
+	private record PixelComponent(int seed, int pixels, int centeredPixels,
+		int minX, int minY, int maxX, int maxY, int stablePixels, int maxDelta) {
+		private static PixelComponent empty(int width, int height) {
+			return new PixelComponent(-1, 0, 0, width, height, -1, -1, 0, 0);
+		}
+
+		private String bounds() {
+			return Arrays.toString(new int[] {minX, minY, maxX, maxY});
+		}
 	}
 
 	private record MatrixRow(
@@ -2141,11 +2342,16 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		private static final String HEADER = String.join("\t",
 			"pack", "source_zip", "sha256_before", "sha256_after", "source_hash_intact", "copy_hash_matches",
 			"on_reload_ms", "on_frame_samples", "on_median_ms", "on_p95_ms", "on_p99_ms", "on_image",
-			"on_iris_error", "on_pack_in_use", "on_error", "patched_entity_programs", "total_entity_programs",
+			"on_iris_error", "on_pack_in_use", "on_burst_frames", "on_burst_stable_ratio", "on_burst_max_rgb_delta", "on_error",
+			"patched_entity_programs", "total_entity_programs",
 			"off_reload_ms", "off_frame_samples", "off_median_ms", "off_p95_ms", "off_p99_ms", "off_image",
-			"off_iris_error", "off_pack_in_use", "off_error", "restored_reload_ms", "restored_image", "restored_iris_error",
-			"restored_pack_in_use", "restored_error", "restored_tolerance_rgb_distance", "restored_compared_pixels",
-			"restored_stable_pixels", "restored_stable_ratio", "restored_max_rgb_delta", "toon_signal", "toon_signal_pixels",
+			"off_iris_error", "off_pack_in_use", "off_burst_frames", "off_burst_stable_ratio", "off_burst_max_rgb_delta", "off_error",
+			"restored_reload_ms", "restored_image", "restored_iris_error",
+			"restored_pack_in_use", "restored_burst_frames", "restored_burst_stable_ratio",
+			"restored_burst_max_rgb_delta", "restored_error", "restored_tolerance_rgb_distance", "restored_compared_pixels",
+			"restored_stable_pixels", "restored_stable_ratio", "restored_max_rgb_delta",
+			"restored_scene_structure_correlation", "restored_scene_stable",
+			"restored_scene_change_pixels", "restored_scene_change_bounds", "toon_signal", "toon_signal_pixels",
 			"toon_centered_pixels", "toon_bounds", "error");
 
 		private String toTsv() {
@@ -2154,15 +2360,25 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 				Boolean.toString(sourceHashIntact), Boolean.toString(copyHashMatches),
 				metric(on.reloadMs()), Integer.toString(on.frames().samples()), metric(on.frames().medianMs()),
 				metric(on.frames().p95Ms()), metric(on.frames().p99Ms()), tsvPath(on.image()),
-				tsv(on.irisError()), Boolean.toString(on.packInUse()), tsv(on.error()), Integer.toString(dump.patched()), Integer.toString(dump.total()),
+				tsv(on.irisError()), Boolean.toString(on.packInUse()),
+				Integer.toString(on.burst().frames()), metric(on.burst().minStableRatio()),
+				Integer.toString(on.burst().maxRgbDelta()), tsv(on.error()),
+				Integer.toString(dump.patched()), Integer.toString(dump.total()),
 				metric(off.reloadMs()), Integer.toString(off.frames().samples()), metric(off.frames().medianMs()),
 				metric(off.frames().p95Ms()), metric(off.frames().p99Ms()), tsvPath(off.image()),
-				tsv(off.irisError()), Boolean.toString(off.packInUse()), tsv(off.error()), metric(restored.reloadMs()), tsvPath(restored.image()),
-				tsv(restored.irisError()), Boolean.toString(restored.packInUse()), tsv(restored.error()), "18",
+				tsv(off.irisError()), Boolean.toString(off.packInUse()),
+				Integer.toString(off.burst().frames()), metric(off.burst().minStableRatio()),
+				Integer.toString(off.burst().maxRgbDelta()), tsv(off.error()),
+				metric(restored.reloadMs()), tsvPath(restored.image()),
+				tsv(restored.irisError()), Boolean.toString(restored.packInUse()),
+				Integer.toString(restored.burst().frames()), metric(restored.burst().minStableRatio()),
+				Integer.toString(restored.burst().maxRgbDelta()), tsv(restored.error()), "18",
 				Integer.toString(toon.restoredComparedPixels()), Integer.toString(toon.restoredStablePixels()),
 				metric(toon.restoredComparedPixels() == 0 ? Double.NaN
 					: (double) toon.restoredStablePixels() / toon.restoredComparedPixels()),
-				Integer.toString(toon.restoredMaxDelta()), Boolean.toString(toon.detected()),
+				Integer.toString(toon.restoredMaxDelta()), metric(toon.sceneStructureCorrelation()),
+				Boolean.toString(toon.sceneStable()),
+				Integer.toString(toon.sceneChangePixels()), tsv(toon.sceneChangeBounds()), Boolean.toString(toon.detected()),
 				Integer.toString(toon.signalPixels()), Integer.toString(toon.centeredPixels()), tsv(toon.bounds()), tsv(error));
 		}
 	}
