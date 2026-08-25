@@ -1,16 +1,15 @@
 {
   "version": 2,
   "head": {
-    "name": "J_Bip_C_Head",
     "forward": [
-      0,
-      0,
-      -1
+      0.0,
+      0.0,
+      -1.0
     ],
     "right": [
-      1,
-      0,
-      0
+      1.0,
+      0.0,
+      0.0
     ]
   },
   "lightDirectionMultiplier": [
@@ -20,280 +19,494 @@
   ],
   "smoothNormals": "generate",
   "smoothNormalAngle": 180,
-  "baseColorScale": 0.62,
+  "baseColorScale": 1.0,
   "rampTexture": "sendagaya-toon-ramp.png",
   "materials": [
     {
       "index": 0,
       "lightMap": "sendagaya-toon-light-0.png",
+      "rampTexture": "sendagaya-toon-ramp.png",
       "outline": true,
       "outlineMode": "screen",
-      "outlineWidth": 0.35,
+      "outlineWidth": 0.9,
       "outlineColor": [
-        0.22,
-        0.18,
-        0.22,
+        0.2577,
+        0.1358,
+        0.1336,
         1.0
       ],
-      "shadowSmoothness": 0.08
+      "shadowOffset": 0.0,
+      "shadowSmoothness": 0.3,
+      "shadeColor": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "rimOffset": 4.0,
+      "rimThreshold": 0.15,
+      "rimIntensity": 0.45,
+      "rimPower": 5.0,
+      "nonMetalSpecular": 0.15,
+      "specularShininess": 15.0
     },
     {
       "index": 1,
       "lightMap": "sendagaya-toon-light-1.png",
+      "rampTexture": "sendagaya-toon-ramp.png",
       "outline": true,
       "outlineMode": "screen",
-      "outlineWidth": 0.35,
+      "outlineWidth": 0.9,
       "outlineColor": [
-        0.22,
-        0.18,
-        0.22,
+        0.3464,
+        0.326,
+        0.3182,
         1.0
       ],
-      "shadowSmoothness": 0.08
+      "shadowOffset": 0.0,
+      "shadowSmoothness": 0.3,
+      "shadeColor": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "rimOffset": 4.0,
+      "rimThreshold": 0.15,
+      "rimIntensity": 0.45,
+      "rimPower": 5.0,
+      "nonMetalSpecular": 0.6,
+      "specularShininess": 40.0
     },
     {
       "index": 2,
       "lightMap": "sendagaya-toon-light-2.png",
+      "rampTexture": "sendagaya-toon-ramp.png",
       "outline": true,
       "outlineMode": "screen",
-      "outlineWidth": 0.35,
+      "outlineWidth": 0.9,
       "outlineColor": [
-        0.22,
-        0.18,
-        0.22,
+        0.1946,
+        0.1945,
+        0.1946,
         1.0
       ],
-      "shadowSmoothness": 0.08
+      "shadowOffset": 0.0,
+      "shadowSmoothness": 0.3,
+      "shadeColor": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "rimOffset": 4.0,
+      "rimThreshold": 0.15,
+      "rimIntensity": 0.45,
+      "rimPower": 5.0,
+      "nonMetalSpecular": 0.15,
+      "specularShininess": 15.0
     },
     {
       "index": 3,
       "lightMap": "sendagaya-toon-light-3.png",
+      "rampTexture": "sendagaya-toon-ramp.png",
       "outline": true,
       "outlineMode": "screen",
-      "outlineWidth": 0.35,
+      "outlineWidth": 0.9,
       "outlineColor": [
-        0.22,
-        0.18,
-        0.22,
+        0.2067,
+        0.2067,
+        0.2067,
         1.0
       ],
-      "shadowSmoothness": 0.08
+      "shadowOffset": 0.0,
+      "shadowSmoothness": 0.3,
+      "shadeColor": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "rimOffset": 4.0,
+      "rimThreshold": 0.15,
+      "rimIntensity": 0.45,
+      "rimPower": 5.0,
+      "nonMetalSpecular": 0.15,
+      "specularShininess": 15.0
     },
     {
       "index": 4,
       "lightMap": "sendagaya-toon-light-4.png",
+      "rampTexture": "sendagaya-toon-ramp.png",
       "outline": true,
       "outlineMode": "screen",
-      "outlineWidth": 0.35,
+      "outlineWidth": 0.9,
       "outlineColor": [
-        0.22,
-        0.18,
-        0.22,
+        0.2697,
+        0.2696,
+        0.2697,
         1.0
       ],
-      "shadowSmoothness": 0.08
+      "shadowOffset": 0.0,
+      "shadowSmoothness": 0.3,
+      "shadeColor": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "rimOffset": 4.0,
+      "rimThreshold": 0.15,
+      "rimIntensity": 0.45,
+      "rimPower": 5.0,
+      "nonMetalSpecular": 0.15,
+      "specularShininess": 15.0
     },
     {
       "index": 5,
       "lightMap": "sendagaya-toon-light-5.png",
+      "rampTexture": "sendagaya-toon-ramp.png",
       "outline": true,
       "outlineMode": "screen",
-      "outlineWidth": 0.35,
+      "outlineWidth": 0.9,
       "outlineColor": [
-        0.22,
-        0.18,
-        0.22,
+        0.1519,
+        0.119,
+        0.1191,
         1.0
       ],
-      "shadowSmoothness": 0.08
+      "shadowOffset": 0.0,
+      "shadowSmoothness": 0.3,
+      "shadeColor": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "rimOffset": 4.0,
+      "rimThreshold": 0.15,
+      "rimIntensity": 0.45,
+      "rimPower": 5.0,
+      "nonMetalSpecular": 0.6,
+      "specularShininess": 40.0
     },
     {
       "index": 6,
       "lightMap": "sendagaya-toon-light-6.png",
+      "rampTexture": "sendagaya-toon-ramp.png",
       "outline": true,
       "outlineMode": "screen",
-      "outlineWidth": 0.35,
+      "outlineWidth": 0.9,
       "outlineColor": [
-        0.22,
-        0.18,
-        0.22,
+        0.3179,
+        0.3169,
+        0.2725,
         1.0
       ],
-      "shadowSmoothness": 0.08
+      "shadowOffset": 0.0,
+      "shadowSmoothness": 0.3,
+      "shadeColor": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "rimOffset": 4.0,
+      "rimThreshold": 0.15,
+      "rimIntensity": 0.45,
+      "rimPower": 5.0,
+      "nonMetalSpecular": 0.6,
+      "specularShininess": 40.0
     },
     {
       "index": 7,
       "lightMap": "sendagaya-toon-light-7.png",
+      "rampTexture": "sendagaya-toon-ramp.png",
       "outline": true,
       "outlineMode": "screen",
-      "outlineWidth": 0.35,
+      "outlineWidth": 0.9,
       "outlineColor": [
-        0.22,
-        0.18,
-        0.22,
+        0.365,
+        0.2915,
+        0.254,
         1.0
       ],
-      "shadowSmoothness": 0.12,
+      "shadowOffset": 0.0,
+      "shadowSmoothness": 0.3,
+      "shadeColor": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "rimOffset": 4.0,
+      "rimThreshold": 0.15,
+      "rimIntensity": 0.45,
+      "rimPower": 5.0,
+      "nonMetalSpecular": 0.15,
+      "specularShininess": 15.0,
       "face": true,
       "faceSdfLayout": "directional-rg",
       "faceLightMap": "sendagaya-toon-face.png",
       "faceShadow": "sendagaya-toon-face-shadow.png",
-      "rampTexture": "sendagaya-toon-ramp.png",
       "blushIntensity": 0.45,
-      "faceShadowStrength": 0.75
+      "faceShadowStrength": 1.0
     },
     {
       "index": 8,
       "lightMap": "sendagaya-toon-light-8.png",
+      "rampTexture": "sendagaya-toon-ramp.png",
       "outline": true,
       "outlineMode": "screen",
-      "outlineWidth": 0.35,
+      "outlineWidth": 0.9,
       "outlineColor": [
-        0.22,
-        0.18,
-        0.22,
+        0.03,
+        0.03,
+        0.03,
         1.0
       ],
-      "shadowSmoothness": 0.08
+      "shadowOffset": 0.0,
+      "shadowSmoothness": 0.3,
+      "shadeColor": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "rimOffset": 4.0,
+      "rimThreshold": 0.15,
+      "rimIntensity": 0.45,
+      "rimPower": 5.0,
+      "nonMetalSpecular": 0.6,
+      "specularShininess": 40.0
     },
     {
       "index": 9,
       "lightMap": "sendagaya-toon-light-9.png",
+      "rampTexture": "sendagaya-toon-ramp.png",
       "outline": true,
       "outlineMode": "screen",
-      "outlineWidth": 0.35,
+      "outlineWidth": 0.9,
       "outlineColor": [
-        0.22,
-        0.18,
-        0.22,
+        0.3216,
+        0.2425,
+        0.2177,
         1.0
       ],
-      "shadowSmoothness": 0.08,
-      "rampTexture": "sendagaya-toon-ramp.png"
+      "shadowOffset": 0.0,
+      "shadowSmoothness": 0.3,
+      "shadeColor": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "rimOffset": 4.0,
+      "rimThreshold": 0.15,
+      "rimIntensity": 0.45,
+      "rimPower": 5.0,
+      "nonMetalSpecular": 0.15,
+      "specularShininess": 15.0
     },
     {
       "index": 10,
       "lightMap": "sendagaya-toon-light-10.png",
+      "rampTexture": "sendagaya-toon-ramp.png",
       "outline": true,
       "outlineMode": "screen",
-      "outlineWidth": 0.45,
+      "outlineWidth": 1.1,
       "outlineColor": [
-        0.22,
-        0.18,
-        0.22,
+        0.1198,
+        0.1259,
+        0.1709,
         1.0
       ],
-      "shadowSmoothness": 0.08,
-      "rampTexture": "sendagaya-toon-ramp.png",
-      "rimIntensity": 0.4,
-      "rimOffset": 0.1,
-      "rimPower": 2.5
+      "shadowOffset": 0.0,
+      "shadowSmoothness": 0.3,
+      "shadeColor": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "rimOffset": 4.0,
+      "rimThreshold": 0.15,
+      "rimIntensity": 0.45,
+      "rimPower": 5.0,
+      "nonMetalSpecular": 0.4,
+      "specularShininess": 20.0
     },
     {
       "index": 11,
       "lightMap": "sendagaya-toon-light-11.png",
+      "rampTexture": "sendagaya-toon-ramp.png",
       "outline": true,
       "outlineMode": "screen",
-      "outlineWidth": 0.35,
+      "outlineWidth": 0.9,
       "outlineColor": [
-        0.22,
-        0.18,
-        0.22,
+        0.0605,
+        0.157,
+        0.2333,
         1.0
       ],
-      "shadowSmoothness": 0.08,
-      "matcapTexture": "sendagaya-toon-matcap-metal.png",
+      "shadowOffset": 0.0,
+      "shadowSmoothness": 0.3,
+      "shadeColor": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "rimOffset": 4.0,
+      "rimThreshold": 0.15,
+      "rimIntensity": 0.45,
+      "rimPower": 5.0,
       "metalSpecular": 0.9,
+      "specularShininess": 50.0,
+      "matcapTexture": "sendagaya-toon-matcap-metal.png",
       "metallic": true
     },
     {
       "index": 12,
       "lightMap": "sendagaya-toon-light-12.png",
+      "rampTexture": "sendagaya-toon-ramp.png",
       "outline": true,
       "outlineMode": "screen",
-      "outlineWidth": 0.45,
+      "outlineWidth": 1.1,
       "outlineColor": [
-        0.22,
-        0.18,
-        0.22,
+        0.0791,
+        0.0801,
+        0.0927,
         1.0
       ],
-      "shadowSmoothness": 0.08,
-      "rampTexture": "sendagaya-toon-ramp.png",
-      "rimIntensity": 0.4,
-      "rimOffset": 0.1,
-      "rimPower": 2.5
+      "shadowOffset": 0.0,
+      "shadowSmoothness": 0.3,
+      "shadeColor": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "rimOffset": 4.0,
+      "rimThreshold": 0.15,
+      "rimIntensity": 0.45,
+      "rimPower": 5.0,
+      "nonMetalSpecular": 0.4,
+      "specularShininess": 20.0
     },
     {
       "index": 13,
       "lightMap": "sendagaya-toon-light-13.png",
+      "rampTexture": "sendagaya-toon-ramp.png",
       "outline": true,
       "outlineMode": "screen",
-      "outlineWidth": 0.35,
+      "outlineWidth": 0.9,
       "outlineColor": [
-        0.22,
-        0.18,
-        0.22,
+        0.0905,
+        0.0711,
+        0.0573,
         1.0
       ],
-      "shadowSmoothness": 0.08,
-      "matcapTexture": "sendagaya-toon-matcap-metal.png",
+      "shadowOffset": 0.0,
+      "shadowSmoothness": 0.3,
+      "shadeColor": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "rimOffset": 4.0,
+      "rimThreshold": 0.15,
+      "rimIntensity": 0.45,
+      "rimPower": 5.0,
       "metalSpecular": 0.9,
+      "specularShininess": 50.0,
+      "matcapTexture": "sendagaya-toon-matcap-metal.png",
       "metallic": true
     },
     {
       "index": 14,
       "lightMap": "sendagaya-toon-light-14.png",
+      "rampTexture": "sendagaya-toon-ramp-hair.png",
       "outline": true,
       "outlineMode": "screen",
-      "outlineWidth": 0.45,
+      "outlineWidth": 1.1,
       "outlineColor": [
-        0.22,
-        0.18,
-        0.22,
+        0.2542,
+        0.2542,
+        0.2542,
         1.0
       ],
-      "shadowSmoothness": 0.08,
-      "rampTexture": "sendagaya-toon-ramp-hair.png",
-      "rimIntensity": 0.55,
-      "rimOffset": 0.12,
-      "rimPower": 3.0
+      "shadowOffset": 0.0,
+      "shadowSmoothness": 0.3,
+      "shadeColor": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "rimOffset": 5.0,
+      "rimThreshold": 0.15,
+      "rimIntensity": 0.6,
+      "rimPower": 5.0,
+      "nonMetalSpecular": 0.8,
+      "specularShininess": 30.0
     },
     {
       "index": 15,
       "lightMap": "sendagaya-toon-light-15.png",
+      "rampTexture": "sendagaya-toon-ramp-hair.png",
       "outline": true,
       "outlineMode": "screen",
-      "outlineWidth": 0.45,
+      "outlineWidth": 1.1,
       "outlineColor": [
-        0.22,
-        0.18,
-        0.22,
+        0.2837,
+        0.284,
+        0.2837,
         1.0
       ],
-      "shadowSmoothness": 0.08,
-      "rampTexture": "sendagaya-toon-ramp-hair.png",
-      "rimIntensity": 0.55,
-      "rimOffset": 0.12,
-      "rimPower": 3.0
+      "shadowOffset": 0.0,
+      "shadowSmoothness": 0.3,
+      "shadeColor": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "rimOffset": 5.0,
+      "rimThreshold": 0.15,
+      "rimIntensity": 0.6,
+      "rimPower": 5.0,
+      "nonMetalSpecular": 0.8,
+      "specularShininess": 30.0
     },
     {
       "index": 16,
       "lightMap": "sendagaya-toon-light-16.png",
+      "rampTexture": "sendagaya-toon-ramp-hair.png",
       "outline": true,
       "outlineMode": "screen",
-      "outlineWidth": 0.45,
+      "outlineWidth": 1.1,
       "outlineColor": [
-        0.22,
-        0.18,
-        0.22,
+        0.0497,
+        0.2024,
+        0.2848,
         1.0
       ],
-      "shadowSmoothness": 0.08,
-      "rampTexture": "sendagaya-toon-ramp-hair.png",
-      "rimIntensity": 0.55,
-      "rimOffset": 0.12,
-      "rimPower": 3.0
+      "shadowOffset": 0.0,
+      "shadowSmoothness": 0.3,
+      "shadeColor": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "rimOffset": 5.0,
+      "rimThreshold": 0.15,
+      "rimIntensity": 0.6,
+      "rimPower": 5.0,
+      "nonMetalSpecular": 0.8,
+      "specularShininess": 30.0
     }
   ]
 }

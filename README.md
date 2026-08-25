@@ -4,7 +4,7 @@ Load local VRM 0.x/1.0 models in Minecraft 26.2 Fabric with MCglTF, and optional
 
 ![Celerant ToonShader example with Sendagaya Shino](docs/images/example-sendagaya-shino.png)
 
-The example model is VRoid Project **Sendagaya Shino** ([CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/), [terms of use](https://vroid.pixiv.help/hc/en-us/articles/4402614652569-Do-VRoid-Studio-s-sample-models-come-with-conditions-of-use) / [OpenGameArt mirror](https://opengameart.org/content/vroid-studio-cc0-models)). The still above was captured with Celerant + MCglTF ToonShader under an active Complementary Unbound Iris ShaderPack, using the generated LightMap / face-SDF / ramp sidecar in [`docs/examples/sendagaya-shino/`](docs/examples/sendagaya-shino/). The `.vrm` itself is not vendored; regenerate maps with `generate_toon_assets.py` after download. Visual target: official [`UnityGenshinToonShader`](https://github.com/kaze-mio/UnityGenshinToonShader) `Images/image_0.png` (soft cheek SDF, warm lit albedo, thin outlines, bounded rim).
+The example model is VRoid Project **Sendagaya Shino** ([CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/), [terms of use](https://vroid.pixiv.help/hc/en-us/articles/4402614652569-Do-VRoid-Studio-s-sample-models-come-with-conditions-of-use) / [OpenGameArt mirror](https://opengameart.org/content/vroid-studio-cc0-models)). The still above was captured with Celerant + MCglTF ToonShader under an active Complementary Unbound Iris ShaderPack, using the generated LightMap / face-SDF / ramp sidecar in [`docs/examples/sendagaya-shino/`](docs/examples/sendagaya-shino/). The `.vrm` itself is not vendored; regenerate maps with `generate_toon_assets.py` after download, which is a thin wrapper over [`scripts/vrm_toon_assets.py`](scripts/vrm_toon_assets.py) and derives the same data for any VRM. Visual target: official [`UnityGenshinToonShader`](https://github.com/kaze-mio/UnityGenshinToonShader) `Images/image_0.png` (soft cheek SDF, warm lit albedo, thin outlines, bounded rim).
 
 ## Required mods
 
@@ -42,6 +42,18 @@ Celerant does not modify, store, or redistribute ShaderPack ZIPs, original GLSL,
 Ordinary MCglTF users keep the standard glTF/MToon path. Only models Celerant explicitly requests with `RenderedGltfModel.MTOON_OVERLAY_REQUEST` enter the ToonShader queue, so MCglTF as a whole is not turned into a toon-only renderer. When ShaderPacks are off, MCglTF’s existing managed MToon pass is used.
 
 If a `model.vrm.toon.json` v2 sidecar is present, you can author per-material or per-mesh-primitive LightMap/ramp data, separate face LightMap and shadow SDF with head forward/right, authored or explicitly generated smooth normals, normal-map tangents, metal/non-metal specular and matcap, emission, blush, depth rim, outline width texture/vertex alpha/distance scale/per-material color, and base/outline screen offsets. Standard MToon materials without a sidecar still run with a neutral fallback, but data outside the VRM standard (LightMap, face SDF, and similar) is never inferred from other textures. See the **Optional ToonShader sidecar** section in the MCglTF README for the schema.
+
+## Deriving sidecar data for any VRM
+
+[`scripts/vrm_toon_assets.py`](scripts/vrm_toon_assets.py) writes a v2 sidecar and its LightMap, face SDF, ramp, and matcap textures for an arbitrary VRM, with nothing keyed to a model or to material names. The face material is taken from the mesh the VRM blink and vowel expressions drive, the head is separated from the body by the head-bone skin weights that the specification's first-person `auto` rule uses, and forward/right follow the VRM coordinate table, which is `-Z`/`+X` for VRM 0.x and `+Z`/`-X` for VRM 1.0. Where a model carries no expressions, the head-attached surface facing furthest forward is used instead, and a humanoid map that points `head` at a leaf joint is repaired to the joint that actually carries the eye, hair, and jaw joints. When no face can be identified at all, the facial SDF path is left unconfigured and reported rather than approximated with a generic effect.
+
+[`scripts/check_vrm_corpus.py`](scripts/check_vrm_corpus.py) runs that derivation across directories of models and fails if a character's face cannot be found, if the two face SDF channels stop being complementary, if a ramp runs light-to-shadow instead of shadow-to-light, or if the lit sweep stops following the character's right axis in object space. Feature-test scenes that are not avatars are reported as skipped rather than as misses.
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install pillow numpy
+.venv/bin/python scripts/vrm_toon_assets.py /absolute/path/model.vrm
+.venv/bin/python scripts/check_vrm_corpus.py /path/to/vrms --build /tmp/out
+```
 
 Users must verify the licenses and terms of their VRM models and installed ShaderPacks themselves.
 
