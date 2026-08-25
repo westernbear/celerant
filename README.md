@@ -4,7 +4,7 @@ Load local VRM 0.x/1.0 models in Minecraft 26.2 Fabric with MCglTF, and optional
 
 ![Celerant ToonShader example with Sendagaya Shino](docs/images/example-sendagaya-shino.png)
 
-The example model is VRoid Project **Sendagaya Shino** ([CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/), [terms of use](https://vroid.pixiv.help/hc/en-us/articles/4402614652569-Do-VRoid-Studio-s-sample-models-come-with-conditions-of-use) / [OpenGameArt mirror](https://opengameart.org/content/vroid-studio-cc0-models)). The image above was captured with Celerant + MCglTF ToonShader and no ShaderPack active. The `.vrm` itself is not vendored in this repository.
+The example model is VRoid Project **Sendagaya Shino** ([CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/), [terms of use](https://vroid.pixiv.help/hc/en-us/articles/4402614652569-Do-VRoid-Studio-s-sample-models-come-with-conditions-of-use) / [OpenGameArt mirror](https://opengameart.org/content/vroid-studio-cc0-models)). The image above was captured with Celerant + MCglTF ToonShader and a current Modrinth Iris ShaderPack (BSL) active. The `.vrm` itself is not vendored in this repository.
 
 ## Required mods
 

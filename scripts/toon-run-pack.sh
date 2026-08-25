@@ -23,7 +23,7 @@ cd /home/singlerr/celerant
 # Export CELERANT_* so systemd-run inherits them. Do not put OPTIONS in env argv —
 # values contain spaces and `!` which break parsing/history.
 export CELERANT_SHADERPACK_DIR="$STAGE"
-export CELERANT_VISUAL_VRM=/home/singlerr/MCglTF-1.20.4/test_models/transformed_jingburger.vrm
+export CELERANT_VISUAL_VRM="${CELERANT_VISUAL_VRM:-/home/singlerr/MCglTF-1.20.4/test_models/transformed_jingburger.vrm}"
 GRADLE_EXTRA=()
 if [[ -n "${LOCAL_MCGLTF:-}" ]]; then
 	GRADLE_EXTRA+=(-PlocalMcgltf="$LOCAL_MCGLTF")

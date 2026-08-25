@@ -26,7 +26,7 @@
 		"minecraft": "~26.2",
 		"java": ">=25",
 		"fabric-api": "*",
-		"mcgltf": "26.2-Fabric-2.3.2.6",
+		"mcgltf": "26.2-Fabric-2.3.2.7",
 		"iris": "1.11.2+mc26.2",
 		"oneconfig": ">=1.1.6"
 	}
