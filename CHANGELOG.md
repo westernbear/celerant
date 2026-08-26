@@ -8,6 +8,7 @@
 - 2026-08-25 cross-pack 검증(BSL, Complementary Reimagined, Complementary Unbound)에서 face SDF, material ramp, smooth normal, outline, rim/specular, compositing 게이트를 모두 PASS했습니다.
 - README/예시 이미지는 CC0 Sendagaya Shino만 사용하고, 저작권 있는 로컬 검증 VRM은 저장소에 포함하지 않습니다.
 - `-PlocalMcgltf=...`와 `scripts/toon-run-pack.sh`의 `LOCAL_MCGLTF`로 로컬 MCglTF JAR을 쓰는 절차를 문서화했습니다.
+- CI/Release가 JitPack cold start 대신 GitHub Release JAR을 `-PlocalMcgltf`로 받아 빌드하도록 바꿨습니다.
 
 ## 1.2.1
 

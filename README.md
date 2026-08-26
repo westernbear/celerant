@@ -14,7 +14,9 @@ The example model is VRoid Project **Sendagaya Shino** ([CC0 1.0](https://creati
 - Iris 1.11.2+ and the Sodium 0.9.x build Iris requires
 - [OneConfig 1.1.6 for Fabric 26.2](https://modrinth.com/mod/oneconfig/version/UCFu181L) plus the Compose Multiplatform and Fabric Language Kotlin builds OneConfig requires
 
-External mods are not bundled in the Celerant JAR. Gradle resolves the MCglTF release tag from JitPack.
+External mods are not bundled in the Celerant JAR. Local and CI builds prefer a
+GitHub Release JAR via `-PlocalMcgltf=...`; otherwise Gradle resolves the MCglTF
+release tag from JitPack.
 
 ## Usage
 

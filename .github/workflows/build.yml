@@ -27,13 +27,32 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
+      # Prefer the GitHub Release JAR over JitPack. Cold JitPack builds often exceed
+      # Gradle's HTTP timeout and fail CI before compile starts.
+      - name: Fetch MCglTF release JAR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$(sed -n 's/^mcgltf_version=//p' gradle.properties | head -n1)"
+          mkdir -p "$HOME/.celerant/mcgltf"
+          gh release download "$tag" \
+            --repo westernbear/MCglTF-1.20.4 \
+            --pattern 'MCglTF-*.jar' \
+            --dir "$HOME/.celerant/mcgltf" \
+            --clobber
+          jar="$(find "$HOME/.celerant/mcgltf" -maxdepth 1 -type f -name 'MCglTF-*.jar' ! -name '*-sources.jar' | head -n1)"
+          test -n "$jar" && test -f "$jar"
+          echo "LOCAL_MCGLTF=$jar" >> "$GITHUB_ENV"
+
       - name: Build
-        run: ./gradlew build --no-daemon --stacktrace
+        run: ./gradlew build --no-daemon --stacktrace -PlocalMcgltf="$LOCAL_MCGLTF"
 
       - name: Run client game test
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
-        run: xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runClientGameTest --no-daemon --stacktrace
+        run: xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runClientGameTest --no-daemon --stacktrace -PlocalMcgltf="$LOCAL_MCGLTF"
 
       - name: Upload OneConfig UI evidence
         if: always()

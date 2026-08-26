@@ -33,10 +33,27 @@ jobs:
           grep -qxF "mod_version=$version" gradle.properties
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: Fetch MCglTF release JAR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$(sed -n 's/^mcgltf_version=//p' gradle.properties | head -n1)"
+          mkdir -p "$HOME/.celerant/mcgltf"
+          gh release download "$tag" \
+            --repo westernbear/MCglTF-1.20.4 \
+            --pattern 'MCglTF-*.jar' \
+            --dir "$HOME/.celerant/mcgltf" \
+            --clobber
+          jar="$(find "$HOME/.celerant/mcgltf" -maxdepth 1 -type f -name 'MCglTF-*.jar' ! -name '*-sources.jar' | head -n1)"
+          test -n "$jar" && test -f "$jar"
+          echo "LOCAL_MCGLTF=$jar" >> "$GITHUB_ENV"
+
       - name: Build and run client game test
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
-        run: xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew clean build runClientGameTest --no-daemon --stacktrace
+        run: xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew clean build runClientGameTest --no-daemon --stacktrace -PlocalMcgltf="$LOCAL_MCGLTF"
 
       - name: Create checksum
         env:
