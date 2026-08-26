@@ -109,7 +109,7 @@ LOCAL_MCGLTF=/absolute/path/MCglTF-26.2-Fabric-2.3.2.8.jar ./gradlew runClientGa
 The main branch and pull requests run the Gradle build and a real Xvfb client game test. Create a new GitHub Release from a clean, remotely synced main branch with:
 
 ```bash
-./scripts/release.sh 1.2.1
+./scripts/release.sh 1.2.2
 ```
 
 The script bumps the version, builds, commits, and atomically pushes an annotated tag with main. The Release workflow for `v*` tags re-runs the client game test, then publishes the mod JAR and SHA-256 checksum.

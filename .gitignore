@@ -4,6 +4,7 @@ run/
 .idea/
 *.iml
 .codex/
+.omo/
 .gstack/
 graphify-out/
 graphify-out/.graphify_python

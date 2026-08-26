@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.2.2
+
 - MCglTF 26.2-Fabric-2.3.2.8로 올리고, **Generate Toon assets**를 MCglTF `ToonAssetGenerator`에 연결해 Python 도구와 동일한 sidecar/시트를 게임 안에서 생성합니다.
 - Python `vrm_toon_assets.py`와 Java 생성기 모두 얼굴 albedo·기하에서 blush/eye 중심을 추정하도록 바꿨고, Sendagaya CC0 예시 sidecar를 재생성했습니다.
 - Unity 스타일 outline view-space expansion, outline-pass depth bias, outline-pass scene-depth/alpha skip으로 끊긴 outline과 alpha speckle을 고쳤습니다.
