@@ -4,13 +4,13 @@ Load local VRM 0.x/1.0 models in Minecraft 26.2 Fabric with MCglTF, and optional
 
 ![Celerant ToonShader example with Sendagaya Shino](docs/images/example-sendagaya-shino.png)
 
-The example model is VRoid Project **Sendagaya Shino** ([CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/), [terms of use](https://vroid.pixiv.help/hc/en-us/articles/4402614652569-Do-VRoid-Studio-s-sample-models-come-with-conditions-of-use) / [OpenGameArt mirror](https://opengameart.org/content/vroid-studio-cc0-models)). The still above was captured with Celerant + MCglTF ToonShader under an active Complementary Unbound Iris ShaderPack, using the generated LightMap / face-SDF / ramp sidecar in [`docs/examples/sendagaya-shino/`](docs/examples/sendagaya-shino/). The `.vrm` itself is not vendored; regenerate maps with `generate_toon_assets.py` after download, which is a thin wrapper over [`scripts/vrm_toon_assets.py`](scripts/vrm_toon_assets.py) and derives the same data for any VRM. Visual target: official [`UnityGenshinToonShader`](https://github.com/kaze-mio/UnityGenshinToonShader) `Images/image_0.png` (soft cheek SDF, warm lit albedo, thin outlines, bounded rim).
+The example model is VRoid Project **Sendagaya Shino** ([CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/), [terms of use](https://vroid.pixiv.help/hc/en-us/articles/4402614652569-Do-VRoid-Studio-s-sample-models-come-with-conditions-of-use) / [OpenGameArt mirror](https://opengameart.org/content/vroid-studio-cc0-models)). The still above was captured 2026-08-25 with Celerant + MCglTF ToonShader 2.3.2.8 under an active Complementary Unbound Iris ShaderPack, using the generated LightMap / face-SDF / ramp sidecar in [`docs/examples/sendagaya-shino/`](docs/examples/sendagaya-shino/). Only CC0 models appear in committed README images; the `.vrm` itself is not vendored. Regenerate maps with `generate_toon_assets.py` after download, which is a thin wrapper over [`scripts/vrm_toon_assets.py`](scripts/vrm_toon_assets.py) and derives the same data for any VRM. Visual target: official [`UnityGenshinToonShader`](https://github.com/kaze-mio/UnityGenshinToonShader) `Images/image_0.png` (soft cheek SDF, warm lit albedo, thin outlines, bounded rim).
 
 ## Required mods
 
 - Fabric Loader 0.19.3+
 - Fabric API 0.156.0+26.2
-- [MCglTF 26.2-Fabric-2.3.2.7](https://github.com/westernbear/MCglTF-1.20.4/releases/tag/v26.2-Fabric-2.3.2.7)
+- [MCglTF 26.2-Fabric-2.3.2.8](https://github.com/westernbear/MCglTF-1.20.4/releases/tag/v26.2-Fabric-2.3.2.8)
 - Iris 1.11.2+ and the Sodium 0.9.x build Iris requires
 - [OneConfig 1.1.6 for Fabric 26.2](https://modrinth.com/mod/oneconfig/version/UCFu181L) plus the Compose Multiplatform and Fabric Language Kotlin builds OneConfig requires
 
@@ -94,7 +94,13 @@ CELERANT_VISUAL_VRM=/absolute/path/model.vrm \
 xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runClientGameTest --offline
 ```
 
-As of 2026-08-13 on Iris 1.11.2 / MCglTF 2.3.2.6, the current Modrinth 26.2-compatible BSL R10.1.3, Complementary Reimagined r5.8.1, and Complementary Unbound r5.8.1 packs were inspected directly with the Jingburger VRM and each pack active. Height-matched comparisons against the official `UnityGenshinToonShader` images, ON/OFF/restored frames, opposed face lighting, and native plus 4× nearest-neighbour crops all passed the face SDF, material ramp, smooth normal, outline, rim/specular, and compositing gates. All three packs kept source SHA-256 intact, `patched_entity_programs=0/9`, and restored pixel stability `1.000`. llvmpipe 1280×720 ON/OFF median frame times were BSL 902/751 ms, Reimagined 756/633 ms, and Unbound 807/670 ms. Those are software-renderer numbers, not real-GPU performance.
+As of 2026-08-25 on Iris 1.11.2 / MCglTF 2.3.2.8, the current Modrinth 26.2-compatible BSL R10.1.3, Complementary Reimagined r5.8.1, and Complementary Unbound r5.8.1 packs were inspected directly with a local validation VRM and each pack active. Height-matched comparisons against the official `UnityGenshinToonShader` images, ON/OFF/restored frames, opposed face lighting, and native plus 4× nearest-neighbour crops all passed the face SDF, material ramp, smooth normal, outline, rim/specular, and compositing gates after the Unity-aligned outline path and geometry-based blush/eye placement landed. All three packs kept source SHA-256 intact, `patched_entity_programs=0/9`, and restored pixel stability `1.000`. llvmpipe 1280×720 ON/OFF median frame times were BSL 753/785 ms, Reimagined 624/580 ms, and Unbound 716/630 ms. Those are software-renderer numbers, not real-GPU performance. Shipped README and example images use only the CC0 Sendagaya Shino sample under [`docs/examples/sendagaya-shino/`](docs/examples/sendagaya-shino/); copyrighted models stay in local-only validation runs.
+
+Local MCglTF builds override JitPack during capture and GameTest:
+
+```bash
+LOCAL_MCGLTF=/absolute/path/MCglTF-26.2-Fabric-2.3.2.8.jar ./gradlew runClientGameTest --offline
+```
 
 ## CI and releases
 

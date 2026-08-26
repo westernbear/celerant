@@ -1,8 +1,7 @@
 # Sendagaya Shino ToonShader example assets
 
-CC0 VRoid sample **Sendagaya Shino**, prepared like the Jingburger matrix
-fixtures: procedural LightMaps, face SDF, body/hair ramps, and a v2
-`.toon.json` sidecar.
+CC0 VRoid sample **Sendagaya Shino**, prepared with procedural LightMaps, face
+SDF, body/hair ramps, and a v2 `.toon.json` sidecar.
 
 ## Download the VRM
 
@@ -72,6 +71,6 @@ export CELERANT_VISUAL_VRM=$PWD/Sendagaya_Shino.vrm
 ```
 
 Use a Toon ON frame with the ShaderPack active as
-`docs/images/example-sendagaya-shino.png`. Compare against
-`kaze-mio/UnityGenshinToonShader` `Images/image_0.png` for soft cheek shadow,
-warm lit albedo, thin outlines, and bounded rim.
+`docs/images/example-sendagaya-shino.png`. Only CC0 models belong in committed
+README images; compare against `kaze-mio/UnityGenshinToonShader` `Images/image_0.png`
+for soft cheek shadow, warm lit albedo, thin outlines, and bounded rim.
