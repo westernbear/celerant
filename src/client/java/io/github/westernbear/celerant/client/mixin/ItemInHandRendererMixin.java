@@ -1,5 +1,6 @@
 package io.github.westernbear.celerant.client.mixin;
 
+import io.github.westernbear.celerant.client.AvatarHandCancelProbe;
 import io.github.westernbear.celerant.client.VrmRuntime;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.ItemInHandRenderer;
@@ -19,7 +20,7 @@ abstract class ItemInHandRendererMixin {
 	private void celerant$hideVanillaFirstPersonHands(float partialTick, PoseStack poseStack,
 		SubmitNodeCollector collector, LocalPlayer player, int packedLight, CallbackInfo callbackInfo) {
 		if (VrmRuntime.getInstance().isLocalAvatarActive()) {
-			AvatarRendererMixin.noteHandCancel();
+			AvatarHandCancelProbe.note();
 			callbackInfo.cancel();
 		}
 	}

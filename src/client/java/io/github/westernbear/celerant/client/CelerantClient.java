@@ -11,12 +11,12 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 
 public class CelerantClient implements ClientModInitializer {
+	private static final KeyMapping.Category INTERFACE_CATEGORY =
+		KeyMapping.Category.register(Identifier.fromNamespaceAndPath("celerant", "interface"));
 	private static final KeyMapping OPEN_UI_KEY = new KeyMapping("key.celerant.open_ui",
-		InputConstants.Type.KEYSYM, InputConstants.KEY_V,
-		KeyMapping.Category.register(Identifier.fromNamespaceAndPath("celerant", "interface")));
+		InputConstants.Type.KEYSYM, InputConstants.KEY_V, INTERFACE_CATEGORY);
 	private static final KeyMapping OPEN_RADIAL_KEY = new KeyMapping("key.celerant.open_radial",
-		InputConstants.Type.KEYSYM, InputConstants.KEY_B,
-		KeyMapping.Category.register(Identifier.fromNamespaceAndPath("celerant", "interface")));
+		InputConstants.Type.KEYSYM, InputConstants.KEY_B, INTERFACE_CATEGORY);
 	private volatile boolean disconnectPending;
 
 	@Override

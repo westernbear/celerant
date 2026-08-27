@@ -846,13 +846,13 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 
 			setCamera(context, CameraType.FIRST_PERSON);
 			context.runOnClient(client ->
-				io.github.westernbear.celerant.client.mixin.AvatarRendererMixin.takeCancelledHandRenders());
+				io.github.westernbear.celerant.client.AvatarHandCancelProbe.take());
 			context.getInput().lookAt(180.0F, 70.0F);
 			context.waitTicks(10);
 			Path firstPersonAvatar = context.takeScreenshot("celerant-avatar-first-person");
 			assertAutoHeadFiltered(idleAvatar, firstPersonAvatar);
 			int cancelledHands = context.computeOnClient(client ->
-				io.github.westernbear.celerant.client.mixin.AvatarRendererMixin.takeCancelledHandRenders());
+				io.github.westernbear.celerant.client.AvatarHandCancelProbe.take());
 			require(cancelledHands > 0,
 				"first-person avatar must cancel vanilla arm/hand rendering (got " + cancelledHands + ")");
 
