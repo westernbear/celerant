@@ -69,6 +69,7 @@ public final class VrmRuntime {
 	private static final Set<String> SUPPORTED_REQUIRED_EXTENSIONS = Set.of(
 		"VRM",
 		"VRMC_vrm",
+		"VRMC_springBone",
 		"VRMC_materials_mtoon",
 		"KHR_materials_unlit",
 		"KHR_mesh_quantization"
@@ -82,6 +83,8 @@ public final class VrmRuntime {
 
 	private RenderedGltfModel model;
 	private VrmRig rig;
+	private io.github.westernbear.celerant.client.physics.BoneClothSimulator springBones =
+		io.github.westernbear.celerant.client.physics.BoneClothSimulator.empty();
 	private RenderedGltfModel.RenderView firstPersonView = RenderedGltfModel.FULL_VIEW;
 	private RenderedGltfModel.RenderView thirdPersonView = RenderedGltfModel.FULL_VIEW;
 	private FirstPersonAnchor firstPersonAnchor;
@@ -98,6 +101,7 @@ public final class VrmRuntime {
 	private boolean loading;
 	private boolean avatarEnabled;
 	private boolean vrm0;
+	private boolean springBoneEnabled = true;
 	private String vrmVersion = "-";
 	private String activeExpression;
 	private float activeExpressionWeight;
@@ -173,6 +177,23 @@ public final class VrmRuntime {
 		}
 		avatarEnabled = enabled;
 		return true;
+	}
+
+	void setSpringBoneEnabled(boolean enabled) {
+		springBoneEnabled = enabled;
+		springBones.setEnabled(enabled);
+	}
+
+	boolean springBonesEnabled() {
+		return springBones.isEnabled();
+	}
+
+	int springChainCount() {
+		return springBones.graphCount();
+	}
+
+	boolean hasSpringBones() {
+		return !springBones.isEmpty();
 	}
 
 	String avatarProblem() {
@@ -344,7 +365,21 @@ public final class VrmRuntime {
 			&& !player.onClimbable() && !state.isInWater && state.swimAmount <= 0.0F
 			&& !state.isPassenger && !state.isFallFlying && !state.isAutoSpinAttack && state.deathTime <= 0.0F;
 		float verticalSpeed = player == null ? 0.0F : (float) player.getDeltaMovement().y;
-		rig.apply(playerModel, state, verticalSpeed, airborne);
+		io.github.westernbear.celerant.loco.LocoParams locoParams = localLocoParams(player, state, airborne);
+		java.util.Map<String, float[]> locoDeltas =
+			io.github.westernbear.celerant.loco.VrmLocomotion.evaluate(locoParams);
+		if (io.github.westernbear.celerant.loco.VrmLocomotion.locomotionEnabled()
+			&& io.github.westernbear.celerant.loco.VrmLocomotion.hasClips()) {
+			rig.applyLocoOnly(locoDeltas, state.isCrouching);
+			// Keep head/look from vanilla retarget on top of L3 body motion.
+			applyHeadFromPlayer(playerModel);
+		} else {
+			rig.apply(playerModel, state, verticalSpeed, airborne);
+			rig.applyLocoDeltas(locoDeltas);
+		}
+		io.github.westernbear.celerant.client.net.CelerantClientNet.broadcastLoco(locoParams);
+		float dt = Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaTicks() / 20.0F;
+		springBones.step(dt);
 		float[] anchor = cameraAnchor == null ? null : cameraAnchor.position();
 		if (anchor != null && !finite(anchor)) {
 			rig.restore();
@@ -364,6 +399,29 @@ public final class VrmRuntime {
 			poseStack.popPose();
 			rig.restore();
 		}
+	}
+
+	private static io.github.westernbear.celerant.loco.LocoParams localLocoParams(
+		AbstractClientPlayer player, AvatarRenderState state, boolean airborne) {
+		if (player == null) {
+			return io.github.westernbear.celerant.loco.LocoParams.IDLE;
+		}
+		var delta = player.getDeltaMovement();
+		float time = player.tickCount / 20.0F;
+		return io.github.westernbear.celerant.loco.LocoParamExtractor.from(
+			(float) delta.x, (float) delta.y, (float) delta.z,
+			!airborne && player.onGround(), state.isCrouching, player.isSprinting(), time);
+	}
+
+	private void applyHeadFromPlayer(PlayerModel playerModel) {
+		if (rig == null || playerModel == null) {
+			return;
+		}
+		java.util.Map<String, float[]> head = new java.util.LinkedHashMap<>();
+		head.put("head", new float[] {playerModel.head.xRot, playerModel.head.yRot, playerModel.head.zRot});
+		head.put("neck", new float[] {
+			playerModel.head.xRot * 0.35F, playerModel.head.yRot * 0.35F, playerModel.head.zRot * 0.35F});
+		rig.applyLocoDeltas(head);
 	}
 
 	private void finishLoad(long ticket, ParsedModel parsed, Throwable error, Vec3 fallbackPosition,
@@ -386,10 +444,12 @@ public final class VrmRuntime {
 		List<Runnable> newCleanup = new ArrayList<>();
 		RenderedGltfModel newModel;
 		VrmRig newRig;
+		io.github.westernbear.celerant.client.physics.BoneClothSimulator newSprings;
 		try {
 			Path sidecar = parsed.path().resolveSibling(parsed.path().getFileName() + ".toon.json");
 			newModel = new RenderedGltfModel(newCleanup, parsed.gltfModel(), sidecar);
 			newRig = VrmRig.create(parsed.gltfModel(), parsed.humanoid());
+			newSprings = parsed.springBones();
 		} catch (RuntimeException exception) {
 			runCleanup(newCleanup);
 			Celerant.LOGGER.error("Could not prepare VRM render data", exception);
@@ -404,6 +464,8 @@ public final class VrmRuntime {
 		releaseModel();
 		model = newModel;
 		rig = newRig;
+		springBones = newSprings;
+		springBones.setEnabled(springBoneEnabled);
 		firstPersonView = parsed.renderViews().firstPerson();
 		thirdPersonView = parsed.renderViews().thirdPerson();
 		firstPersonAnchor = parsed.renderViews().firstPersonAnchor();
@@ -416,7 +478,8 @@ public final class VrmRuntime {
 		vrmVersion = parsed.vrmVersion();
 		vrm0 = parsed.vrm0();
 		position = position == null ? fallbackPosition : position;
-		String result = "Loaded " + loadedPath.getFileName() + " (" + expressions.size() + " expressions)";
+		String result = "Loaded " + loadedPath.getFileName() + " (" + expressions.size() + " expressions"
+			+ (springBones.isEmpty() ? "" : ", " + springBones.graphCount() + " spring chains") + ")";
 		message(result);
 		if (onFinished != null) {
 			onFinished.accept(true, result);
@@ -427,6 +490,7 @@ public final class VrmRuntime {
 		runCleanup(cleanup);
 		model = null;
 		rig = null;
+		springBones = io.github.westernbear.celerant.client.physics.BoneClothSimulator.empty();
 		firstPersonView = RenderedGltfModel.FULL_VIEW;
 		thirdPersonView = RenderedGltfModel.FULL_VIEW;
 		firstPersonAnchor = null;
@@ -485,8 +549,10 @@ public final class VrmRuntime {
 		}
 		Map<String, VrmExpression> expressions = resolveExpressions(gltfModel, rawExpressions);
 		RenderViews renderViews = resolveRenderViews(gltfModel, humanoid, rawFirstPerson);
+		io.github.westernbear.celerant.client.physics.BoneClothSimulator springBones =
+			io.github.westernbear.celerant.client.physics.VrmSpringBoneParser.parse(json, gltfModel, humanoid);
 		return new ParsedModel(path, data.length, gltfModel, expressions, humanoid, renderViews, sceneIndex,
-			rawExpressions.version(), "0.x".equals(rawExpressions.version()));
+			rawExpressions.version(), "0.x".equals(rawExpressions.version()), springBones);
 	}
 
 	private static Path resolveSelectedModelPath(Path path) throws IOException {
@@ -1145,7 +1211,8 @@ public final class VrmRuntime {
 
 	private record ParsedModel(Path path, long fileSize, GltfModel gltfModel,
 		Map<String, VrmExpression> expressions, Map<String, Integer> humanoid, RenderViews renderViews, int sceneIndex,
-		String vrmVersion, boolean vrm0) {
+		String vrmVersion, boolean vrm0,
+		io.github.westernbear.celerant.client.physics.BoneClothSimulator springBones) {
 	}
 
 	private record RenderViews(RenderedGltfModel.RenderView firstPerson,

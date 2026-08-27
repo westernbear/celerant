@@ -35,7 +35,7 @@ Retargeting follows [pixiv/three-vrm’s normalized humanoid design](https://git
 
 A non-zero VRM0 `firstPersonBoneOffset` is converted from VRM0 Z into glTF coordinates for the first-person camera anchor; zero or missing values fall back safely to the Minecraft eye position.
 
-Only the local player is replaced today. Network sync for other players’ VRMs, IK/VR trackers, and spring-bone physics are out of scope. Vanilla armor, held-item, cape, and elytra render layers are hidden in avatar mode to avoid duplicate meshes, while those poses still drive the VRM rig.
+Only the local player is replaced today. Network sync for other players’ VRMs and IK/VR trackers are out of scope. VRM spring bones (`VRMC_springBone` / VRM0 `secondaryAnimation`) are simulated client-side with an XPBD Line BoneCloth solver (Magica-class distance + bend restore and colliders); toggle under OneConfig Motion → Spring bone (XPBD). Vanilla armor, held-item, cape, and elytra render layers are hidden in avatar mode to avoid duplicate meshes, while those poses still drive the VRM rig.
 
 ## ToonShader and ShaderPack boundaries
 
@@ -67,7 +67,7 @@ Celerant is distributed under AGPL-3.0-only per the repository `LICENSE`.
 
 ## Testing
 
-On Linux, the full user flow runs against a real Fabric client, OneConfig, Iris, and Sodium under llvmpipe. The client GameTest opens the OneConfig screen with the real `V` binding, finds control coordinates from the Compose accessibility tree, then drives categories, file picking, numeric/text/slider/switch controls, every action button, and screen re-entry with mouse and keyboard. Invalid/valid file loads, placement, scale, expressions, avatar mode, status, toon toggle, and unload are asserted via runtime status and OneConfig notifications. In headless environments the real file-picker button is clicked and only the OS native dialog return value is replaced by a test mixin; the requested title and `*.vrm` filter are still checked. OS-level captures of the X11 world and control-center frames confirm the UI changes at least 40% of the window. Closing the screen must leave the Iris pipeline and ShaderPack intact.
+On Linux, the full user flow runs against a real Fabric client, OneConfig, Iris, and Sodium under llvmpipe. The client GameTest opens the OneConfig screen with the real `V` binding, finds control coordinates from the Compose accessibility tree, then drives categories, file picking, numeric/text/slider/switch controls, every action button, and screen re-entry with mouse and keyboard. Invalid/valid file loads, placement, scale, expressions, avatar mode, Motion (L3/breathing/sway/spring), Multiplayer upload-without-plugin and cache clear, radial menu (`B`), first-person vanilla arm cancel, status, toon toggle, and unload are asserted via runtime status, mixin probes, and OneConfig notifications. In headless environments the real file-picker button is clicked and only the OS native dialog return value is replaced by a test mixin; the requested title and `*.vrm` filter are still checked. OS-level captures of the X11 world and control-center frames confirm the UI changes at least 40% of the window. Closing the screen must leave the Iris pipeline and ShaderPack intact.
 
 The same client GameTest renders the same VRM with ToonShader ON/OFF/restored ON from a fixed camera. Scene and model bounds must hold, and at least 30% of model pixels that are stable across both ON frames must change only in OFF.
 

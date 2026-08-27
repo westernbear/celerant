@@ -79,6 +79,9 @@ public final class VrmClientCommands {
 							.executes(context -> setExpression(context.getSource(),
 								StringArgumentType.getString(context, "name"),
 								FloatArgumentType.getFloat(context, "weight"))))))
+				.then(ClientCommands.literal("remotes").executes(context ->
+					feedback(context.getSource(),
+						io.github.westernbear.celerant.client.remote.RemoteLocoApplicator.summarize())))
 				.then(ClientCommands.literal("info").executes(context ->
 					feedback(context.getSource(), VrmRuntime.getInstance().info()))))));
 	}

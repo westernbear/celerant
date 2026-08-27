@@ -1,0 +1,6 @@
+name: Celerant
+version: '${version}'
+main: io.github.westernbear.celerant.paper.CelerantPaperPlugin
+api-version: '1.21'
+authors: [westernbear]
+description: Relays Hardened Celerant VRM avatars and locomotion params. Never stores plaintext VRM.

@@ -5,6 +5,7 @@
 	"client": [
 		"AvatarRendererAccessor",
 		"AvatarRendererMixin",
+		"ItemInHandRendererMixin",
 		"LivingEntityRendererMixin",
 		"IrisFinalPassMixin",
 		"ToonShaderProjectionMixin"

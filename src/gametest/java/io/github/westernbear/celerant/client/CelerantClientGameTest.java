@@ -385,6 +385,8 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 			case "Avatar" -> "Replace local player";
 			case "Expressions" -> "Expression name";
 			case "Rendering" -> "Iris toon shading";
+			case "Motion" -> "Locomotion L3";
+			case "Multiplayer" -> "Upload avatar (Hardened)";
 			case "Interface" -> "Runtime status";
 			default -> throw new AssertionError("unknown OneConfig category: " + category);
 		};
@@ -730,7 +732,7 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		sendCommand(context, "celerant vrm load minimal.vrm", "Loading VRM asynchronously");
 		context.waitFor(client -> !VrmRuntime.getInstance().isLoading()
 			&& VrmRuntime.getInstance().info().contains("VRM: minimal.vrm"), 1200);
-		context.waitFor(client -> chatContains(client, "Loaded minimal.vrm (2 expressions)"), 200);
+		context.waitFor(client -> chatContains(client, "Loaded minimal.vrm (2 expressions"), 200);
 
 		sendCommand(context, "celerant vrm expression", "smile, blink");
 		sendCommand(context, "celerant vrm expression unknown", "Unknown expression or no VRM loaded");
@@ -767,6 +769,8 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		verifyRenderedScreenshots(base, morphed);
 
 		testAvatarFlow(context);
+		testMotionUxFlow(context);
+		testRadialMenuFlow(context);
 
 		sendCommand(context, "celerant vrm unload", "VRM unloaded");
 		require("VRM: not loaded".equals(context.computeOnClient(client -> VrmRuntime.getInstance().info())),
@@ -841,10 +845,28 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 			context.waitFor(client -> client.player != null && client.player.onGround(), 200);
 
 			setCamera(context, CameraType.FIRST_PERSON);
+			context.runOnClient(client ->
+				io.github.westernbear.celerant.client.mixin.AvatarRendererMixin.takeCancelledHandRenders());
 			context.getInput().lookAt(180.0F, 70.0F);
 			context.waitTicks(10);
 			Path firstPersonAvatar = context.takeScreenshot("celerant-avatar-first-person");
 			assertAutoHeadFiltered(idleAvatar, firstPersonAvatar);
+			int cancelledHands = context.computeOnClient(client ->
+				io.github.westernbear.celerant.client.mixin.AvatarRendererMixin.takeCancelledHandRenders());
+			require(cancelledHands > 0,
+				"first-person avatar must cancel vanilla arm/hand rendering (got " + cancelledHands + ")");
+
+			context.getInput().holdKey(options -> options.keyShift);
+			Path crouchAvatar;
+			try {
+				context.waitFor(client -> client.player != null && client.player.isCrouching(), 100);
+				context.waitTicks(5);
+				crouchAvatar = context.takeScreenshot("celerant-avatar-crouch");
+			} finally {
+				context.getInput().releaseKey(options -> options.keyShift);
+			}
+			context.waitFor(client -> client.player != null && !client.player.isCrouching(), 100);
+			assertMagenta(crouchAvatar, "crouching avatar must remain visible");
 		} finally {
 			sendCommand(context, "celerant vrm avatar false", "VRM avatar disabled");
 			context.waitFor(client -> Boolean.FALSE.equals(
@@ -856,6 +878,149 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 	private static void setCamera(ClientGameTestContext context, CameraType cameraType) {
 		context.runOnClient(client -> client.options.setCameraType(cameraType));
 		context.waitFor(client -> client.options.getCameraType() == cameraType, 100);
+	}
+
+	private static void testMotionUxFlow(ClientGameTestContext context) {
+		require(context.computeOnClient(client -> VrmRuntime.getInstance().hasSpringBones()),
+			"minimal.vrm fixture must include at least one spring chain");
+		require(context.computeOnClient(client -> VrmRuntime.getInstance().springChainCount() >= 1),
+			"loaded VRM must report spring chains");
+
+		resetUiOption(context, "locomotionEnabled", true);
+		resetUiOption(context, "breathingEnabled", true);
+		resetUiOption(context, "swayingEnabled", true);
+		resetUiOption(context, "springBoneEnabled", true);
+		context.runOnClient(client -> {
+			io.github.westernbear.celerant.loco.VrmLocomotion.setLocomotionEnabled(true);
+			io.github.westernbear.celerant.loco.VrmLocomotion.setBreathingEnabled(true);
+			io.github.westernbear.celerant.loco.VrmLocomotion.setSwayingEnabled(true);
+			VrmRuntime.getInstance().setSpringBoneEnabled(true);
+		});
+
+		var idle = io.github.westernbear.celerant.loco.LocoParamExtractor.from(0, 0, 0, true, false, false, 1.0F);
+		var walk = io.github.westernbear.celerant.loco.LocoParamExtractor.from(0.2F, 0, 0, true, false, false, 2.0F);
+		Map<String, float[]> locoOn = io.github.westernbear.celerant.loco.VrmLocomotion.evaluate(walk);
+		require(locoOn.containsKey("leftUpperLeg"), "L3 locomotion must drive legs when enabled");
+
+		context.runOnClient(client ->
+			io.github.westernbear.celerant.loco.VrmLocomotion.setLocomotionEnabled(false));
+		Map<String, float[]> locoOff = io.github.westernbear.celerant.loco.VrmLocomotion.evaluate(walk);
+		require(!locoOff.containsKey("leftUpperLeg"),
+			"disabling locomotion must remove base walk leg deltas");
+
+		context.runOnClient(client -> {
+			io.github.westernbear.celerant.loco.VrmLocomotion.setLocomotionEnabled(true);
+			io.github.westernbear.celerant.loco.VrmLocomotion.setBreathingEnabled(false);
+			io.github.westernbear.celerant.loco.VrmLocomotion.setSwayingEnabled(false);
+		});
+		Map<String, float[]> breathOff = io.github.westernbear.celerant.loco.VrmLocomotion.evaluate(idle);
+		context.runOnClient(client -> {
+			io.github.westernbear.celerant.loco.VrmLocomotion.setBreathingEnabled(true);
+			io.github.westernbear.celerant.loco.VrmLocomotion.setSwayingEnabled(true);
+		});
+		Map<String, float[]> breathOn = io.github.westernbear.celerant.loco.VrmLocomotion.evaluate(idle);
+		require(breathOn.size() >= breathOff.size(),
+			"breathing/sway ON must not shrink idle layer set vs OFF");
+
+		context.runOnClient(client -> VrmRuntime.getInstance().setSpringBoneEnabled(false));
+		require(!context.computeOnClient(client -> VrmRuntime.getInstance().springBonesEnabled()),
+			"spring bone toggle OFF must disable simulator");
+		context.runOnClient(client -> VrmRuntime.getInstance().setSpringBoneEnabled(true));
+		require(context.computeOnClient(client -> VrmRuntime.getInstance().springBonesEnabled()),
+			"spring bone toggle ON must enable simulator");
+
+		clearNotifications(context);
+		context.getInput().pressKey(CelerantClient.uiKey());
+		waitForOneConfigScreen(context);
+		clickUiCategory(context, "Motion");
+		assertUiText(context, "Locomotion L3");
+		assertUiText(context, "Spring bone (XPBD)");
+		clickUiRowControl(context, "Locomotion L3", "OnClick :");
+		context.waitFor(client -> !io.github.westernbear.celerant.loco.VrmLocomotion.locomotionEnabled(), 100);
+		clickUiRowControl(context, "Locomotion L3", "OnClick :");
+		context.waitFor(client -> io.github.westernbear.celerant.loco.VrmLocomotion.locomotionEnabled(), 100);
+		clickUiRowControl(context, "Breathing", "OnClick :");
+		context.waitFor(client -> !io.github.westernbear.celerant.loco.VrmLocomotion.breathingEnabled(), 100);
+		clickUiRowControl(context, "Breathing", "OnClick :");
+		clickUiRowControl(context, "Swaying", "OnClick :");
+		context.waitFor(client -> !io.github.westernbear.celerant.loco.VrmLocomotion.swayingEnabled(), 100);
+		clickUiRowControl(context, "Swaying", "OnClick :");
+		clickUiRowControl(context, "Spring bone (XPBD)", "OnClick :");
+		context.waitFor(client -> !VrmRuntime.getInstance().springBonesEnabled(), 100);
+		clickUiRowControl(context, "Spring bone (XPBD)", "OnClick :");
+		context.waitFor(client -> VrmRuntime.getInstance().springBonesEnabled(), 100);
+
+		clickUiCategory(context, "Rendering");
+		boolean bloomBefore = context.computeOnClient(client ->
+			com.modularmods.mcgltf.ToonShader.isBloomEnabled());
+		clickUiRowControl(context, "Toon emission bloom", "OnClick :");
+		context.waitFor(client ->
+			com.modularmods.mcgltf.ToonShader.isBloomEnabled() != bloomBefore, 100);
+		clickUiRowControl(context, "Toon emission bloom", "OnClick :");
+		context.waitFor(client ->
+			com.modularmods.mcgltf.ToonShader.isBloomEnabled() == bloomBefore, 100);
+
+		context.getInput().pressKey(GLFW.GLFW_KEY_ESCAPE);
+		context.waitFor(client -> client.gui.screen() == null, 200);
+		resetUiOption(context, "locomotionEnabled", true);
+		resetUiOption(context, "breathingEnabled", true);
+		resetUiOption(context, "swayingEnabled", true);
+		resetUiOption(context, "springBoneEnabled", true);
+		context.runOnClient(client -> {
+			io.github.westernbear.celerant.loco.VrmLocomotion.setLocomotionEnabled(true);
+			io.github.westernbear.celerant.loco.VrmLocomotion.setBreathingEnabled(true);
+			io.github.westernbear.celerant.loco.VrmLocomotion.setSwayingEnabled(true);
+			VrmRuntime.getInstance().setSpringBoneEnabled(true);
+		});
+	}
+
+	private static void testRadialMenuFlow(ClientGameTestContext context) {
+		sendCommand(context, "celerant vrm expression clear", "VRM expression cleared");
+		sendCommand(context, "celerant vrm avatar false", "VRM avatar disabled");
+		context.waitFor(client -> !VrmRuntime.getInstance().isLocalAvatarActive(), 100);
+		context.runOnClient(client -> RadialMenuActions.resetIndexForTest());
+
+		context.getInput().pressKey(CelerantClient.radialKey());
+		context.waitFor(client -> chatContains(client, "Expression"), 100);
+		context.waitFor(client -> {
+			String info = VrmRuntime.getInstance().info();
+			return info.contains("expression smile") || info.contains("expression blink");
+		}, 100);
+
+		context.getInput().pressKey(CelerantClient.radialKey());
+		context.waitFor(client -> chatContains(client, "Clear expression"), 100);
+		context.waitFor(client -> VrmRuntime.getInstance().info().contains("expression none"), 100);
+
+		context.getInput().pressKey(CelerantClient.radialKey());
+		context.waitFor(client -> chatContains(client, "Toggle avatar"), 100);
+		context.waitFor(client -> VrmRuntime.getInstance().isLocalAvatarActive(), 100);
+		assertInfoContains(context, "avatar on");
+
+		context.getInput().pressKey(CelerantClient.radialKey());
+		context.waitFor(client -> chatContains(client, "Upload avatar"), 100);
+
+		context.getInput().pressKey(CelerantClient.radialKey());
+		context.waitFor(client -> chatContains(client, "Settings"), 100);
+		context.waitFor(client -> client.gui.screen() != null
+			&& ONECONFIG_SCREEN.equals(client.gui.screen().getClass().getName()), 400);
+		assertCelerantOneConfigRoute(context);
+		context.getInput().pressKey(GLFW.GLFW_KEY_ESCAPE);
+		context.waitFor(client -> client.gui.screen() == null, 200);
+
+		sendCommand(context, "celerant vrm avatar false", "VRM avatar disabled");
+		sendCommand(context, "celerant vrm remotes", "no remotes");
+
+		clearNotifications(context);
+		context.getInput().pressKey(CelerantClient.uiKey());
+		waitForOneConfigScreen(context);
+		clickUiCategory(context, "Multiplayer");
+		clickUiRowControl(context, "Upload avatar (Hardened)", "OnClick :");
+		waitForNotification(context, "Celerant Paper plugin is not present", NotificationType.ERROR);
+		clearNotifications(context);
+		clickUiRowControl(context, "Clear remote cache", "OnClick :");
+		waitForNotification(context, "Remote avatar cache cleared", NotificationType.SUCCESS);
+		context.getInput().pressKey(GLFW.GLFW_KEY_ESCAPE);
+		context.waitFor(client -> client.gui.screen() == null, 200);
 	}
 
 	private static void testLocalVisualFlow(ClientGameTestContext context, TestSingleplayerContext world,
@@ -2207,7 +2372,7 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 		String json = """
 			{
 			  "asset":{"version":"2.0","generator":"Celerant Client Game Test"},
-			  "extensionsUsed":["VRMC_vrm","VRMC_materials_mtoon"],
+			  "extensionsUsed":["VRMC_vrm","VRMC_materials_mtoon","VRMC_springBone"],
 			  "extensions":{"VRMC_vrm":{
 			    "specVersion":"1.0",
 			    "meta":{"name":"Celerant Test Avatar","version":"1.0","authors":["Celerant"],"licenseUrl":"https://vrm.dev/licenses/1.0/"},
@@ -2223,6 +2388,12 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 			      "smile":{"morphTargetBinds":[{"node":0,"index":0,"weight":1.0}]},
 			      "blink":{"isBinary":true,"morphTargetBinds":[{"node":0,"index":0,"weight":1.0}]}
 			    }}
+			  },"VRMC_springBone":{
+			    "specVersion":"1.0",
+			    "springs":[{"name":"hair","joints":[
+			      {"node":16,"hitRadius":0.02,"stiffness":1.0,"gravityPower":1.0,"gravityDir":[0.0,-1.0,0.0],"dragForce":0.4},
+			      {"node":17,"hitRadius":0.02,"stiffness":0.5,"gravityPower":1.0,"gravityDir":[0.0,-1.0,0.0],"dragForce":0.4}
+			    ]}]
 			  }},
 			  "scene":0,
 			  "scenes":[{"nodes":[0,1]}],
@@ -2230,7 +2401,7 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 			    {"mesh":0,"skin":0,"name":"Avatar"},
 			    {"name":"hips","children":[2,4,7],"translation":[0.0,0.9,0.0]},
 			    {"name":"spine","children":[3,10,13],"translation":[0.0,0.3,0.0]},
-			    {"name":"head","translation":[0.0,0.5,0.0]},
+			    {"name":"head","children":[16],"translation":[0.0,0.5,0.0]},
 			    {"name":"leftUpperLeg","children":[5],"translation":[0.2,-0.1,0.0]},
 			    {"name":"leftLowerLeg","children":[6],"translation":[0.0,-0.45,0.0]},
 			    {"name":"leftFoot","translation":[0.0,-0.45,0.0]},
@@ -2242,7 +2413,9 @@ public final class CelerantClientGameTest implements FabricClientGameTest {
 			    {"name":"leftHand","translation":[0.4,0.0,0.0]},
 			    {"name":"rightUpperArm","children":[14],"translation":[-0.25,0.35,0.0]},
 			    {"name":"rightLowerArm","children":[15],"translation":[-0.45,0.0,0.0]},
-			    {"name":"rightHand","translation":[-0.4,0.0,0.0]}
+			    {"name":"rightHand","translation":[-0.4,0.0,0.0]},
+			    {"name":"hairRoot","children":[17],"translation":[0.0,0.12,0.05]},
+			    {"name":"hairTip","translation":[0.0,0.18,0.0]}
 			  ],
 			  "skins":[{"joints":[1,4,3],"skeleton":1,"inverseBindMatrices":8}],
 			  "meshes":[{"weights":[0.0],"primitives":[

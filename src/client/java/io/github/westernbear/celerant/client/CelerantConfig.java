@@ -68,6 +68,26 @@ public final class CelerantConfig extends Config {
 		description = "Add the multi-pass emission glow. Disable this first when ToonShader frame rate is low.")
 	boolean toonBloomEnabled;
 
+	@Switch(title = "Locomotion L3", category = "Motion",
+		description = "VRChat-style locomotion with Warudo breathing/sway layers.")
+	boolean locomotionEnabled = true;
+
+	@Switch(title = "Breathing", category = "Motion",
+		description = "Warudo-style additive breathing when idle.")
+	boolean breathingEnabled = true;
+
+	@Switch(title = "Swaying", category = "Motion",
+		description = "Warudo-style idle hip sway.")
+	boolean swayingEnabled = true;
+
+	@Switch(title = "Spring bone (XPBD)", category = "Motion",
+		description = "Magica-style Line BoneCloth secondary motion from VRM spring bones.")
+	boolean springBoneEnabled = true;
+
+	@Info(title = "Multiplayer", category = "Multiplayer",
+		description = "Requires the Celerant Paper plugin. Avatars upload Hardened (scrambled+AES); the plugin never stores plaintext.")
+	private String multiplayerNotice = "";
+
 	private CelerantConfig() {
 		super("celerant", "assets/celerant/icon.png", "Celerant VRM", Category.QOL);
 	}
@@ -98,6 +118,30 @@ public final class CelerantConfig extends Config {
 		});
 		addCallback("toonEnabled", this::setToonEnabled);
 		addCallback("toonBloomEnabled", this::setToonBloomEnabled);
+		addCallback("locomotionEnabled", (Boolean enabled) -> {
+			io.github.westernbear.celerant.loco.VrmLocomotion.setLocomotionEnabled(enabled);
+			return false;
+		});
+		addCallback("breathingEnabled", (Boolean enabled) -> {
+			io.github.westernbear.celerant.loco.VrmLocomotion.setBreathingEnabled(enabled);
+			return false;
+		});
+		addCallback("swayingEnabled", (Boolean enabled) -> {
+			io.github.westernbear.celerant.loco.VrmLocomotion.setSwayingEnabled(enabled);
+			return false;
+		});
+		addCallback("springBoneEnabled", (Boolean enabled) -> {
+			VrmRuntime.getInstance().setSpringBoneEnabled(enabled);
+			return false;
+		});
+		io.github.westernbear.celerant.loco.VrmLocomotion.setLocomotionEnabled(locomotionEnabled);
+		io.github.westernbear.celerant.loco.VrmLocomotion.setBreathingEnabled(breathingEnabled);
+		io.github.westernbear.celerant.loco.VrmLocomotion.setSwayingEnabled(swayingEnabled);
+		VrmRuntime.getInstance().setSpringBoneEnabled(springBoneEnabled);
+	}
+
+	String modelPathValue() {
+		return modelPath;
 	}
 
 	void open() {
@@ -274,6 +318,51 @@ public final class CelerantConfig extends Config {
 			return;
 		}
 		Notifications.success("Celerant VRM", "Expression cleared.");
+	}
+
+	@Button(title = "Upload avatar (Hardened)", category = "Multiplayer", text = "Upload",
+		description = "Scramble+AES-GCM the loaded VRM path and upload via the Paper plugin.")
+	private void uploadAvatar() {
+		if (!io.github.westernbear.celerant.client.net.CelerantClientNet.isPluginPresent()) {
+			Notifications.error("Celerant",
+				net.minecraft.client.resources.language.I18n.get("celerant.error.plugin_missing"));
+			return;
+		}
+		if (modelPath == null || modelPath.isBlank()) {
+			Notifications.error("Celerant", "Choose a .vrm file first.");
+			return;
+		}
+		boolean ok = io.github.westernbear.celerant.client.remote.RemoteAvatarManager
+			.uploadLocal(Path.of(modelPath.trim()));
+		if (ok) {
+			Notifications.success("Celerant",
+				net.minecraft.client.resources.language.I18n.get("celerant.multiplayer.upload_ok"));
+		} else {
+			Notifications.error("Celerant",
+				net.minecraft.client.resources.language.I18n.get("celerant.error.upload_failed"));
+		}
+	}
+
+	@Button(title = "Clear remote cache", category = "Multiplayer", text = "Clear",
+		description = "Delete encrypted remote avatar cache files.")
+	private void clearRemoteCache() {
+		try {
+			Path root = Minecraft.getInstance().gameDirectory.toPath().resolve("celerant/remote-cache");
+			if (Files.isDirectory(root)) {
+				try (var stream = Files.list(root)) {
+					stream.forEach(path -> {
+						try {
+							Files.deleteIfExists(path);
+						} catch (IOException ignored) {
+						}
+					});
+				}
+			}
+			Notifications.success("Celerant",
+				net.minecraft.client.resources.language.I18n.get("celerant.multiplayer.cache_cleared"));
+		} catch (IOException e) {
+			Notifications.error("Celerant", e.getMessage());
+		}
 	}
 
 	@Button(title = "Runtime status", category = "Interface", text = "Show",

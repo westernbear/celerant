@@ -69,6 +69,21 @@ dependencies {
 	runtimeOnly("maven.modrinth:oneconfig:${project.oneconfig_version}") { transitive = false }
 	runtimeOnly "maven.modrinth:compose-multiplatform:${project.compose_multiplatform_version}"
 	runtimeOnly "net.fabricmc:fabric-language-kotlin:${project.fabric_language_kotlin_version}"
+
+	testImplementation "org.junit.jupiter:junit-jupiter:5.10.2"
+	testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+}
+
+tasks.named("test", Test).configure {
+	useJUnitPlatform()
+	dependsOn tasks.named("compileClientJava")
+}
+
+sourceSets {
+	test {
+		compileClasspath += sourceSets.client.output + sourceSets.client.compileClasspath
+		runtimeClasspath += sourceSets.client.output + sourceSets.client.runtimeClasspath
+	}
 }
 
 processResources {

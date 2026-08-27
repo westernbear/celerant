@@ -105,6 +105,41 @@ final class VrmRig {
 		}
 	}
 
+	/**
+	 * Applies L3 procedural locomotion Euler deltas (radians XYZ) on top of the current pose.
+	 */
+	void applyLocoDeltas(java.util.Map<String, float[]> eulerDeltas) {
+		if (eulerDeltas == null || eulerDeltas.isEmpty()) {
+			return;
+		}
+		for (var entry : eulerDeltas.entrySet()) {
+			float[] xyz = entry.getValue();
+			if (xyz == null || xyz.length < 3) {
+				continue;
+			}
+			rotateCurrent(entry.getKey(), new Quaternionf().rotationXYZ(xyz[0], xyz[1], xyz[2]));
+		}
+	}
+
+	/**
+	 * Restores rest pose then applies only L3 deltas (remote / loco-primary path).
+	 */
+	void applyLocoOnly(java.util.Map<String, float[]> eulerDeltas, boolean crouching) {
+		restore();
+		applyLocoDeltas(eulerDeltas);
+		if (crouching) {
+			Bone hips = bones.get("hips");
+			if (hips != null) {
+				float[] translation = hips.translation().clone();
+				float[] offset = hips.crouchTranslation();
+				translation[0] += offset[0];
+				translation[1] += offset[1];
+				translation[2] += offset[2];
+				hips.node().setTranslation(translation);
+			}
+		}
+	}
+
 	private void applyAirPose(float verticalSpeed) {
 		float rise = clamp01(verticalSpeed / 0.42F);
 		float fall = clamp01(-verticalSpeed / 0.50F);
