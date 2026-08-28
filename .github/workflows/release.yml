@@ -38,17 +38,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          set -euo pipefail
-          tag="v$(sed -n 's/^mcgltf_version=//p' gradle.properties | head -n1)"
-          mkdir -p "$HOME/.celerant/mcgltf"
-          gh release download "$tag" --repo westernbear/MCglTF-1.20.4 \
-            --pattern 'mcgltf-api-*.jar' \
-            --pattern 'MCglTF-Fabric-*.jar' \
-            --pattern 'MCglTF-NeoForge-*.jar' \
-            --dir "$HOME/.celerant/mcgltf" --clobber
-          echo "LOCAL_MCGLTF_API=$(find "$HOME/.celerant/mcgltf" -name 'mcgltf-api-*.jar' ! -name '*-sources*' | head -n1)" >> "$GITHUB_ENV"
-          echo "LOCAL_MCGLTF_FABRIC=$(find "$HOME/.celerant/mcgltf" -name 'MCglTF-Fabric-*.jar' ! -name '*-sources*' ! -name '*-javadoc*' | head -n1)" >> "$GITHUB_ENV"
-          echo "LOCAL_MCGLTF_NEOFORGE=$(find "$HOME/.celerant/mcgltf" -name 'MCglTF-NeoForge-*.jar' ! -name '*-sources*' ! -name '*-javadoc*' | head -n1)" >> "$GITHUB_ENV"
+          bash .github/scripts/fetch-mcgltf.sh
 
       - name: Build and run Fabric client game test
         env:
@@ -56,7 +46,7 @@ jobs:
         run: |
           xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew clean buildAll :fabric:runClientGameTest --no-daemon --stacktrace \
             -PlocalMcgltfApi="$LOCAL_MCGLTF_API" \
-            -PlocalMcgltfCommon="$LOCAL_MCGLTF_FABRIC" \
+            -PlocalMcgltfCommon="$LOCAL_MCGLTF_COMMON" \
             -PlocalMcgltfFabric="$LOCAL_MCGLTF_FABRIC"
 
       - name: Run NeoForge client game test
@@ -65,7 +55,7 @@ jobs:
         run: |
           xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew :neoforge:runClientGameTest --no-daemon --stacktrace \
             -PlocalMcgltfApi="$LOCAL_MCGLTF_API" \
-            -PlocalMcgltfCommon="$LOCAL_MCGLTF_NEOFORGE" \
+            -PlocalMcgltfCommon="$LOCAL_MCGLTF_COMMON" \
             -PlocalMcgltfNeoForge="$LOCAL_MCGLTF_NEOFORGE" \
             -PirisRuntime=true
 

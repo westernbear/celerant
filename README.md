@@ -12,14 +12,14 @@ The example model is VRoid Project **Sendagaya Shino** ([CC0 1.0](https://creati
 
 - Fabric Loader 0.19.3+
 - Fabric API 0.156.0+26.2
-- [MCglTF 26.2-2.4.0 (Fabric)](https://github.com/westernbear/MCglTF-1.20.4/releases/tag/v26.2-2.4.0)
+- [MCglTF 26.2-2.4.0 (Fabric)](https://github.com/westernbear/MCglTF/releases/tag/v26.2-2.4.0)
 - Iris 1.11.2+26.2-fabric and the Sodium 0.9.x build Iris requires
 - [OneConfig for Fabric 26.2](https://modrinth.com/mod/oneconfig/version/UCFu181L) plus Compose Multiplatform and Fabric Language Kotlin
 
 ### NeoForge
 
 - NeoForge 26.2.0.1-beta+
-- [MCglTF 26.2-2.4.0 (NeoForge)](https://github.com/westernbear/MCglTF-1.20.4/releases/tag/v26.2-2.4.0)
+- [MCglTF 26.2-2.4.0 (NeoForge)](https://github.com/westernbear/MCglTF/releases/tag/v26.2-2.4.0)
 - Iris 1.11.2+26.2-neoforge and Sodium for NeoForge (Embeddium stack)
 - OneConfig (Fabric API artifacts are used at compile time on NeoForge today)
 
