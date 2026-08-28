@@ -1,0 +1,18 @@
+{
+	"key.celerant.open_ui": "Celerant VRM 열기",
+	"key.celerant.open_radial": "Celerant 라디얼 메뉴 열기",
+	"key.category.celerant.interface": "Celerant",
+	"celerant.radial.title": "Celerant",
+	"celerant.radial.expressions": "표정",
+	"celerant.radial.clear_expression": "표정 해제",
+	"celerant.radial.toggle_avatar": "아바타 토글",
+	"celerant.radial.upload": "아바타 업로드",
+	"celerant.radial.open_config": "설정",
+	"celerant.radial.close": "닫기",
+	"celerant.multiplayer.upload_ok": "Hardened 아바타 업로드를 시작했습니다.",
+	"celerant.multiplayer.cache_cleared": "원격 아바타 캐시를 지웠습니다.",
+	"celerant.error.plugin_missing": "이 서버에 Celerant Paper 플러그인이 없습니다.",
+	"celerant.error.upload_failed": "아바타 업로드에 실패했습니다.",
+	"celerant.error.hash_mismatch": "아바타 무결성 검사에 실패했습니다.",
+	"celerant.error.acl_denied": "아바타 접근이 거부되었습니다."
+}

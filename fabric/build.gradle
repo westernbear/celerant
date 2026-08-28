@@ -1,0 +1,129 @@
+plugins {
+	id 'net.fabricmc.fabric-loom'
+	id 'multiloader-loader'
+}
+
+base {
+	archivesName = 'Celerant-Fabric'
+}
+
+repositories {
+	maven {
+		name = 'Polyfrost'
+		url = 'https://repo.polyfrost.org/releases'
+		content { includeGroup 'org.polyfrost.oneconfig' }
+	}
+	maven {
+		name = 'Modrinth'
+		url = 'https://api.modrinth.com/maven'
+		content { includeGroup 'maven.modrinth' }
+	}
+	maven {
+		name = 'CaffeineMC'
+		url = 'https://maven.caffeinemc.net/releases'
+		content { includeGroup 'net.caffeinemc' }
+	}
+	maven {
+		name = 'JitPack'
+		url = 'https://jitpack.io'
+		content { includeGroup 'com.github.westernbear' }
+	}
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${fabric_loader_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
+	if (providers.gradleProperty('localMcgltfApi').isPresent()) {
+		compileOnly files(providers.gradleProperty('localMcgltfApi').get())
+	} else {
+		compileOnly "com.modularmods.mcgltf:mcgltf-api:${mcgltf_version}"
+	}
+	if (providers.gradleProperty('localMcgltfCommon').isPresent()) {
+		compileOnly files(providers.gradleProperty('localMcgltfCommon').get())
+	}
+	if (providers.gradleProperty('localMcgltfFabric').isPresent()) {
+		runtimeOnly files(providers.gradleProperty('localMcgltfFabric').get())
+	} else if (providers.gradleProperty('localMcgltf').isPresent()) {
+		runtimeOnly files(providers.gradleProperty('localMcgltf').get())
+	}
+	compileOnly "maven.modrinth:iris:${iris_version}"
+	runtimeOnly "maven.modrinth:iris:${iris_version}"
+	runtimeOnly "net.caffeinemc:sodium-fabric:${sodium_version}"
+	compileOnly("org.polyfrost.oneconfig:26.2-fabric:${oneconfig_api_version}") { transitive = false }
+	compileOnly("org.polyfrost.oneconfig:config:${oneconfig_api_version}") { transitive = false }
+	compileOnly("org.polyfrost.oneconfig:config-impl:${oneconfig_api_version}") { transitive = false }
+	compileOnly("org.polyfrost.oneconfig:notifications:${oneconfig_api_version}") { transitive = false }
+	runtimeOnly("maven.modrinth:oneconfig:${oneconfig_version}") { transitive = false }
+	runtimeOnly "maven.modrinth:compose-multiplatform:${compose_multiplatform_version}"
+	runtimeOnly "net.fabricmc:fabric-language-kotlin:${fabric_language_kotlin_version}"
+}
+
+fabricApi {
+	configureTests {
+		createSourceSet = true
+		modId = 'celerant-gametest'
+		enableGameTests = false
+		enableClientGameTests = true
+		eula = true
+	}
+}
+
+def shaderPack = providers.gradleProperty('shaderPack')
+
+tasks.register('prepareIrisGameTest') {
+	onlyIf { shaderPack.isPresent() }
+	inputs.file(shaderPack)
+	outputs.dir(layout.buildDirectory.dir('run/clientGameTest/shaderpacks'))
+	outputs.file(layout.buildDirectory.file('run/clientGameTest/config/iris.properties'))
+	mustRunAfter tasks.named('deleteGameTestRunDir')
+
+	doLast {
+		def pack = file(shaderPack.get())
+		def runDirectory = layout.buildDirectory.dir('run/clientGameTest').get().asFile
+		copy {
+			from pack
+			into new File(runDirectory, 'shaderpacks')
+		}
+		def configDirectory = new File(runDirectory, 'config')
+		configDirectory.mkdirs()
+		new File(configDirectory, 'iris.properties').text = "shaderPack=${pack.name}\nenableShaders=true\n"
+	}
+}
+
+tasks.named('runClientGameTest') {
+	dependsOn tasks.named('prepareIrisGameTest')
+}
+
+loom {
+	runs {
+		client {
+			client()
+			setConfigName('Fabric Client')
+			ideConfigGenerated(true)
+			runDir('runs/client')
+		}
+	}
+}
+
+tasks.withType(Javadoc).configureEach {
+	enabled = false
+}
+
+def loaderAttribute = Attribute.of('io.github.mcgradleconventions.loader', String)
+['apiElements', 'runtimeElements', 'sourcesElements', 'javadocElements', 'includeInternal', 'modCompileClasspath'].each { variant ->
+	configurations.named(variant) {
+		attributes {
+			attribute(loaderAttribute, 'fabric')
+		}
+	}
+}
+sourceSets.configureEach {
+	[it.compileClasspathConfigurationName, it.runtimeClasspathConfigurationName].each { variant ->
+		configurations.named(variant) {
+			attributes {
+				attribute(loaderAttribute, 'fabric')
+			}
+		}
+	}
+}

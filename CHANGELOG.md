@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Migrate to Fabric + NeoForge multiloader layout (`api`, `common`, `fabric`, `neoforge`) aligned with MCglTF 26.2-2.4.0.
+- Add public `celerant-api` module (`CelerantApi`, `VrmAvatarHandle`, lifecycle listeners, `LocoParams`).
+- Introduce `ICelerantPlatformHelper` / `ServiceLoader` platform bridge for rendering, networking, config, and Iris probes.
+- CI matrix: common unit tests, Fabric client GameTest, NeoForge client smoke harness; release ships Fabric, NeoForge, and API JARs.
+
 ## 1.2.2
 
 - MCglTF 26.2-Fabric-2.3.2.8로 올리고, **Generate Toon assets**를 MCglTF `ToonAssetGenerator`에 연결해 Python 도구와 동일한 sidecar/시트를 게임 안에서 생성합니다.

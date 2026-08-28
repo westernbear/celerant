@@ -3,7 +3,7 @@ set -euo pipefail
 
 version="${1:?Usage: ./scripts/release.sh <version>}"
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || {
-	echo "Version must be SemVer, for example 1.0.1 or 1.1.0-rc.1" >&2
+	echo "Version must be SemVer, for example 1.0.1 or 26.2-1.3.0" >&2
 	exit 2
 }
 
@@ -21,9 +21,9 @@ git rev-parse -q --verify "refs/tags/v$version" >/dev/null && {
 	exit 2
 }
 
-sed -i "s/^mod_version=.*/mod_version=$version/" gradle.properties
-grep -qxF "mod_version=$version" gradle.properties
-./gradlew build --no-daemon --stacktrace
+sed -i "s/^version=.*/version=$version/" gradle.properties
+grep -qxF "version=$version" gradle.properties
+./gradlew buildAll --no-daemon --stacktrace
 
 if ! git diff --quiet -- gradle.properties; then
 	git add gradle.properties
@@ -33,4 +33,4 @@ fi
 git tag -a "v$version" -m "Celerant $version"
 git push --atomic origin main "v$version"
 
-echo "Release v$version pushed; GitHub Actions will publish it after client game tests pass."
+echo "Release v$version pushed; GitHub Actions will publish Fabric, NeoForge, and API JARs."

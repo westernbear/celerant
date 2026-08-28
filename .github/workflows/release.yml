@@ -10,7 +10,7 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -30,36 +30,55 @@ jobs:
         shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
-          grep -qxF "mod_version=$version" gradle.properties
+          grep -qxF "version=$version" gradle.properties
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Fetch MCglTF release JAR
+      - name: Fetch MCglTF multiloader JARs
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          tag="$(sed -n 's/^mcgltf_version=//p' gradle.properties | head -n1)"
+          tag="v$(sed -n 's/^mcgltf_version=//p' gradle.properties | head -n1)"
           mkdir -p "$HOME/.celerant/mcgltf"
-          gh release download "$tag" \
-            --repo westernbear/MCglTF-1.20.4 \
-            --pattern 'MCglTF-*.jar' \
-            --dir "$HOME/.celerant/mcgltf" \
-            --clobber
-          jar="$(find "$HOME/.celerant/mcgltf" -maxdepth 1 -type f -name 'MCglTF-*.jar' ! -name '*-sources.jar' | head -n1)"
-          test -n "$jar" && test -f "$jar"
-          echo "LOCAL_MCGLTF=$jar" >> "$GITHUB_ENV"
+          gh release download "$tag" --repo westernbear/MCglTF-1.20.4 \
+            --pattern 'mcgltf-api-*.jar' \
+            --pattern 'MCglTF-Fabric-*.jar' \
+            --pattern 'MCglTF-NeoForge-*.jar' \
+            --dir "$HOME/.celerant/mcgltf" --clobber
+          echo "LOCAL_MCGLTF_API=$(find "$HOME/.celerant/mcgltf" -name 'mcgltf-api-*.jar' ! -name '*-sources*' | head -n1)" >> "$GITHUB_ENV"
+          echo "LOCAL_MCGLTF_FABRIC=$(find "$HOME/.celerant/mcgltf" -name 'MCglTF-Fabric-*.jar' ! -name '*-sources*' ! -name '*-javadoc*' | head -n1)" >> "$GITHUB_ENV"
+          echo "LOCAL_MCGLTF_NEOFORGE=$(find "$HOME/.celerant/mcgltf" -name 'MCglTF-NeoForge-*.jar' ! -name '*-sources*' ! -name '*-javadoc*' | head -n1)" >> "$GITHUB_ENV"
 
-      - name: Build and run client game test
+      - name: Build and run Fabric client game test
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
-        run: xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew clean build runClientGameTest --no-daemon --stacktrace -PlocalMcgltf="$LOCAL_MCGLTF"
+        run: |
+          xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew clean buildAll :fabric:runClientGameTest --no-daemon --stacktrace \
+            -PlocalMcgltfApi="$LOCAL_MCGLTF_API" \
+            -PlocalMcgltfCommon="$LOCAL_MCGLTF_FABRIC" \
+            -PlocalMcgltfFabric="$LOCAL_MCGLTF_FABRIC"
 
-      - name: Create checksum
+      - name: Run NeoForge client game test
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: |
+          xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew :neoforge:runClientGameTest --no-daemon --stacktrace \
+            -PlocalMcgltfApi="$LOCAL_MCGLTF_API" \
+            -PlocalMcgltfCommon="$LOCAL_MCGLTF_NEOFORGE" \
+            -PlocalMcgltfNeoForge="$LOCAL_MCGLTF_NEOFORGE" \
+            -PirisRuntime=true
+
+      - name: Create checksums
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        working-directory: build/libs
-        run: sha256sum "celerant-$VERSION.jar" > SHA256SUMS.txt
+        shell: bash
+        run: |
+          mkdir -p release
+          cp fabric/build/libs/Celerant-Fabric-*.jar release/
+          cp neoforge/build/libs/Celerant-NeoForge-*.jar release/
+          cp api/build/libs/celerant-api-*.jar release/
+          (cd release && sha256sum *.jar > SHA256SUMS.txt)
 
       - name: Create GitHub Release
         env:
@@ -69,8 +88,8 @@ jobs:
         run: |
           args=(
             "$GITHUB_REF_NAME"
-            "build/libs/celerant-$VERSION.jar"
-            "build/libs/SHA256SUMS.txt"
+            release/*.jar
+            release/SHA256SUMS.txt
             --verify-tag
             --generate-notes
             --title "Celerant $VERSION"

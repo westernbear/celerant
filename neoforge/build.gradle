@@ -1,0 +1,145 @@
+plugins {
+	id 'multiloader-loader'
+	id 'net.neoforged.moddev'
+}
+
+base {
+	archivesName = 'Celerant-NeoForge'
+}
+
+repositories {
+	maven {
+		name = 'Polyfrost'
+		url = 'https://repo.polyfrost.org/releases'
+		content { includeGroup 'org.polyfrost.oneconfig' }
+	}
+	maven {
+		name = 'Modrinth'
+		url = 'https://api.modrinth.com/maven'
+		content { includeGroup 'maven.modrinth' }
+	}
+	maven {
+		name = 'CaffeineMC'
+		url = 'https://maven.caffeinemc.net/releases'
+		content { includeGroup 'net.caffeinemc' }
+	}
+	maven {
+		name = 'JitPack'
+		url = 'https://jitpack.io'
+		content { includeGroup 'com.github.westernbear' }
+	}
+	maven {
+		name = 'Iris'
+		url = 'https://maven.irisshaders.dev/releases'
+		content { includeGroup 'net.irisshaders' }
+	}
+}
+
+dependencies {
+	if (providers.gradleProperty('localMcgltfApi').isPresent()) {
+		compileOnly files(providers.gradleProperty('localMcgltfApi').get())
+	} else {
+		compileOnly "com.modularmods.mcgltf:mcgltf-api:${mcgltf_version}"
+	}
+	if (providers.gradleProperty('localMcgltfCommon').isPresent()) {
+		compileOnly files(providers.gradleProperty('localMcgltfCommon').get())
+	}
+	if (providers.gradleProperty('localMcgltfNeoForge').isPresent()) {
+		runtimeOnly files(providers.gradleProperty('localMcgltfNeoForge').get())
+	}
+	compileOnly "maven.modrinth:iris:${iris_neoforge_version}"
+	if (providers.gradleProperty('irisRuntime').orElse('false').get().toBoolean()) {
+		runtimeOnly "maven.modrinth:iris:${iris_neoforge_version}"
+		runtimeOnly "maven.modrinth:sodium:${sodium_neoforge_version}"
+	}
+	compileOnly("org.polyfrost.oneconfig:26.2-fabric:${oneconfig_api_version}") { transitive = false }
+	compileOnly("org.polyfrost.oneconfig:config:${oneconfig_api_version}") { transitive = false }
+	compileOnly("org.polyfrost.oneconfig:config-impl:${oneconfig_api_version}") { transitive = false }
+	compileOnly("org.polyfrost.oneconfig:notifications:${oneconfig_api_version}") { transitive = false }
+	runtimeOnly("maven.modrinth:oneconfig:${oneconfig_version}") { transitive = false }
+}
+
+sourceSets {
+	gametest {
+		compileClasspath += sourceSets.main.compileClasspath
+		runtimeClasspath += sourceSets.main.runtimeClasspath
+	}
+}
+
+neoForge {
+	version = neoforge_version
+	runs {
+		configureEach {
+			systemProperty('neoforge.enabledGameTestNamespaces', mod_id)
+			ideName = "NeoForge ${it.name.capitalize()} (${project.path})"
+		}
+		client {
+			client()
+			gameDirectory = layout.projectDirectory.dir('runs/client').asFile
+		}
+		clientGameTest {
+			client()
+			gameDirectory = layout.projectDirectory.dir('runs/clientGameTest').asFile
+		}
+	}
+	mods {
+		"${mod_id}" {
+			sourceSet sourceSets.main
+		}
+		'celerant-gametest' {
+			sourceSet sourceSets.gametest
+		}
+	}
+}
+
+tasks.withType(Javadoc).configureEach {
+	enabled = false
+}
+
+def shaderPack = providers.gradleProperty('shaderPack')
+
+tasks.register('prepareIrisGameTest') {
+	onlyIf { shaderPack.isPresent() }
+	inputs.file(shaderPack)
+	outputs.dir(layout.buildDirectory.dir('runs/clientGameTest/shaderpacks'))
+	outputs.file(layout.buildDirectory.file('runs/clientGameTest/config/iris.properties'))
+	doLast {
+		def pack = file(shaderPack.get())
+		def runDirectory = layout.projectDirectory.dir('runs/clientGameTest').asFile
+		copy {
+			from pack
+			into new File(runDirectory, 'shaderpacks')
+		}
+		def configDirectory = new File(runDirectory, 'config')
+		configDirectory.mkdirs()
+		new File(configDirectory, 'iris.properties').text = "shaderPack=${pack.name}\nenableShaders=true\n"
+	}
+}
+
+tasks.named('runClientGameTest') {
+	dependsOn tasks.named('prepareIrisGameTest')
+	jvmArgs '-Dcelerant.gametest=true'
+	if (providers.gradleProperty('irisRuntime').orElse('false').get().toBoolean()) {
+		dependsOn configurations.runtimeClasspath
+	}
+}
+
+def loaderAttribute = Attribute.of('io.github.mcgradleconventions.loader', String)
+['apiElements', 'runtimeElements', 'sourcesElements', 'javadocElements'].each { variant ->
+	configurations.named(variant) {
+		attributes {
+			attribute(loaderAttribute, 'neoforge')
+		}
+	}
+}
+sourceSets.configureEach {
+	[it.compileClasspathConfigurationName, it.runtimeClasspathConfigurationName, it.getTaskName(null, 'jarJar')].each { variant ->
+		if (configurations.findByName(variant) != null) {
+			configurations.named(variant) {
+				attributes {
+					attribute(loaderAttribute, 'neoforge')
+				}
+			}
+		}
+	}
+}

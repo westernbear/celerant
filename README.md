@@ -1,6 +1,6 @@
 # Celerant VRM
 
-Load local VRM 0.x/1.0 models in Minecraft 26.2 Fabric with MCglTF, and optionally composite VRM `ToonShader` materials on top of the final Iris ShaderPack scene.
+Load local VRM 0.x/1.0 models in Minecraft 26.2 on **Fabric** and **NeoForge** with MCglTF, and optionally composite VRM `ToonShader` materials on top of the final Iris ShaderPack scene.
 
 ![Celerant ToonShader example with Sendagaya Shino](docs/images/example-sendagaya-shino.png)
 
@@ -8,15 +8,42 @@ The example model is VRoid Project **Sendagaya Shino** ([CC0 1.0](https://creati
 
 ## Required mods
 
+### Fabric
+
 - Fabric Loader 0.19.3+
 - Fabric API 0.156.0+26.2
-- [MCglTF 26.2-Fabric-2.3.2.8](https://github.com/westernbear/MCglTF-1.20.4/releases/tag/v26.2-Fabric-2.3.2.8)
-- Iris 1.11.2+ and the Sodium 0.9.x build Iris requires
-- [OneConfig 1.1.6 for Fabric 26.2](https://modrinth.com/mod/oneconfig/version/UCFu181L) plus the Compose Multiplatform and Fabric Language Kotlin builds OneConfig requires
+- [MCglTF 26.2-2.4.0 (Fabric)](https://github.com/westernbear/MCglTF-1.20.4/releases/tag/v26.2-2.4.0)
+- Iris 1.11.2+26.2-fabric and the Sodium 0.9.x build Iris requires
+- [OneConfig for Fabric 26.2](https://modrinth.com/mod/oneconfig/version/UCFu181L) plus Compose Multiplatform and Fabric Language Kotlin
 
-External mods are not bundled in the Celerant JAR. Local and CI builds prefer a
-GitHub Release JAR via `-PlocalMcgltf=...`; otherwise Gradle resolves the MCglTF
-release tag from JitPack.
+### NeoForge
+
+- NeoForge 26.2.0.1-beta+
+- [MCglTF 26.2-2.4.0 (NeoForge)](https://github.com/westernbear/MCglTF-1.20.4/releases/tag/v26.2-2.4.0)
+- Iris 1.11.2+26.2-neoforge and Sodium for NeoForge (Embeddium stack)
+- OneConfig (Fabric API artifacts are used at compile time on NeoForge today)
+
+External mods are not bundled in the Celerant JARs. Local builds use MCglTF multiloader JARs:
+
+```bash
+./gradlew buildAll \
+  -PlocalMcgltfApi=/path/mcgltf-api-26.2-26.2-2.4.0.jar \
+  -PlocalMcgltfCommon=/path/mcgltf-common-26.2-26.2-2.4.0.jar \
+  -PlocalMcgltfFabric=/path/MCglTF-Fabric-26.2-2.4.0.jar \
+  -PlocalMcgltfNeoForge=/path/MCglTF-NeoForge-26.2-2.4.0.jar
+```
+
+CI downloads the same artifacts from the MCglTF GitHub Release (or builds `mcgltf-common` when the release omits it).
+
+## Public API
+
+Other mods can compile against [`celerant-api`](api/README.md) and depend on the loader JAR at runtime:
+
+```java
+CelerantApi.get().localAvatar().ifPresent(handle -> { /* ... */ });
+```
+
+See [`api/README.md`](api/README.md) for Gradle coordinates and surface types.
 
 ## Usage
 
@@ -35,7 +62,7 @@ Retargeting follows [pixiv/three-vrm’s normalized humanoid design](https://git
 
 A non-zero VRM0 `firstPersonBoneOffset` is converted from VRM0 Z into glTF coordinates for the first-person camera anchor; zero or missing values fall back safely to the Minecraft eye position.
 
-Only the local player is replaced today. Network sync for other players’ VRMs and IK/VR trackers are out of scope. VRM spring bones (`VRMC_springBone` / VRM0 `secondaryAnimation`) are simulated client-side with an XPBD Line BoneCloth solver (Magica-class distance + bend restore and colliders); toggle under OneConfig Motion → Spring bone (XPBD). Vanilla armor, held-item, cape, and elytra render layers are hidden in avatar mode to avoid duplicate meshes, while those poses still drive the VRM rig.
+Only the local player is replaced today. Network sync for other players’ VRMs and IK/VR trackers are out of scope. VRM spring bones (`VRMC_springBone` / VRM0 `secondaryAnimation`) are simulated client-side with the UniVRM / three-vrm Verlet reference (rest-axis stiffness, gravity, drag, length constraint, sphere/capsule colliders); toggle under OneConfig Motion → Spring bone. Vanilla armor, held-item, cape, and elytra render layers are hidden in avatar mode to avoid duplicate meshes, while those poses still drive the VRM rig.
 
 ## ToonShader and ShaderPack boundaries
 
@@ -72,7 +99,13 @@ On Linux, the full user flow runs against a real Fabric client, OneConfig, Iris,
 The same client GameTest renders the same VRM with ToonShader ON/OFF/restored ON from a fixed camera. Scene and model bounds must hold, and at least 30% of model pixels that are stable across both ON frames must change only in OFF.
 
 ```bash
-xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runClientGameTest --offline
+xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew :fabric:runClientGameTest --offline
+```
+
+NeoForge smoke harness (platform + ToonShader toggle):
+
+```bash
+xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew :neoforge:runClientGameTest -PirisRuntime=true --offline
 ```
 
 Test VRMs and ShaderPacks are created dynamically in the run directory and are not shipped in the release JAR. When a local model is set, a same-named `.toon.json` and referenced PNGs are copied into the test run directory only.
@@ -98,18 +131,19 @@ xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runClientGameTest --offline
 
 As of 2026-08-25 on Iris 1.11.2 / MCglTF 2.3.2.8, the current Modrinth 26.2-compatible BSL R10.1.3, Complementary Reimagined r5.8.1, and Complementary Unbound r5.8.1 packs were inspected directly with a local validation VRM and each pack active. Height-matched comparisons against the official `UnityGenshinToonShader` images, ON/OFF/restored frames, opposed face lighting, and native plus 4× nearest-neighbour crops all passed the face SDF, material ramp, smooth normal, outline, rim/specular, and compositing gates after the Unity-aligned outline path and geometry-based blush/eye placement landed. All three packs kept source SHA-256 intact, `patched_entity_programs=0/9`, and restored pixel stability `1.000`. llvmpipe 1280×720 ON/OFF median frame times were BSL 753/785 ms, Reimagined 624/580 ms, and Unbound 716/630 ms. Those are software-renderer numbers, not real-GPU performance. Shipped README and example images use only the CC0 Sendagaya Shino sample under [`docs/examples/sendagaya-shino/`](docs/examples/sendagaya-shino/); copyrighted models stay in local-only validation runs.
 
-Local MCglTF builds override JitPack during capture and GameTest:
+Local MCglTF builds override Maven during capture and GameTest:
 
 ```bash
-LOCAL_MCGLTF=/absolute/path/MCglTF-26.2-Fabric-2.3.2.8.jar ./gradlew runClientGameTest --offline
+./gradlew :fabric:runClientGameTest --offline \
+  -PlocalMcgltfApi=... -PlocalMcgltfCommon=... -PlocalMcgltfFabric=...
 ```
 
 ## CI and releases
 
-The main branch and pull requests run the Gradle build and a real Xvfb client game test. Create a new GitHub Release from a clean, remotely synced main branch with:
+The main branch and pull requests run `:common:test`, `:fabric:runClientGameTest`, and `:neoforge:runClientGameTest`. Create a release from a clean, synced `main` branch:
 
 ```bash
-./scripts/release.sh 1.2.2
+./scripts/release.sh 26.2-1.3.0
 ```
 
-The script bumps the version, builds, commits, and atomically pushes an annotated tag with main. The Release workflow for `v*` tags re-runs the client game test, then publishes the mod JAR and SHA-256 checksum.
+The Release workflow for `v*` tags re-runs Fabric and NeoForge client tests, then publishes **Celerant-Fabric**, **Celerant-NeoForge**, and **celerant-api** JARs with SHA-256 checksums.

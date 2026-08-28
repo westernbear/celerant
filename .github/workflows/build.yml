@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/multiloader-fabric-neoforge]
   pull_request:
     branches: [main]
 
@@ -10,61 +10,178 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  common-test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
-
+    timeout-minutes: 20
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up Java 25
-        uses: actions/setup-java@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "25"
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
-
-      # Prefer the GitHub Release JAR over JitPack. Cold JitPack builds often exceed
-      # Gradle's HTTP timeout and fail CI before compile starts.
-      - name: Fetch MCglTF release JAR
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Fetch MCglTF multiloader JARs
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          tag="$(sed -n 's/^mcgltf_version=//p' gradle.properties | head -n1)"
+          tag="v$(sed -n 's/^mcgltf_version=//p' gradle.properties | head -n1)"
           mkdir -p "$HOME/.celerant/mcgltf"
           gh release download "$tag" \
             --repo westernbear/MCglTF-1.20.4 \
-            --pattern 'MCglTF-*.jar' \
+            --pattern 'mcgltf-api-*.jar' \
+            --pattern 'mcgltf-common-*.jar' \
+            --pattern 'MCglTF-Fabric-*.jar' \
+            --pattern 'MCglTF-NeoForge-*.jar' \
             --dir "$HOME/.celerant/mcgltf" \
-            --clobber
-          jar="$(find "$HOME/.celerant/mcgltf" -maxdepth 1 -type f -name 'MCglTF-*.jar' ! -name '*-sources.jar' | head -n1)"
-          test -n "$jar" && test -f "$jar"
-          echo "LOCAL_MCGLTF=$jar" >> "$GITHUB_ENV"
+            --clobber || true
+          if ! find "$HOME/.celerant/mcgltf" -maxdepth 1 -name 'mcgltf-common-*.jar' | grep -q .; then
+            git clone --depth 1 --branch feat/multiloader-fabric-neoforge-api \
+              https://github.com/westernbear/MCglTF-1.20.4 /tmp/mcgltf-src
+            (cd /tmp/mcgltf-src && ./gradlew :common:jar --no-daemon --max-workers=1)
+            cp /tmp/mcgltf-src/common/build/libs/mcgltf-common-*.jar "$HOME/.celerant/mcgltf/"
+          fi
+          api="$(find "$HOME/.celerant/mcgltf" -maxdepth 1 -type f -name 'mcgltf-api-*.jar' ! -name '*-sources.jar' | head -n1)"
+          common="$(find "$HOME/.celerant/mcgltf" -maxdepth 1 -type f -name 'mcgltf-common-*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' | head -n1)"
+          fabric="$(find "$HOME/.celerant/mcgltf" -maxdepth 1 -type f -name 'MCglTF-Fabric-*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' | head -n1)"
+          neoforge="$(find "$HOME/.celerant/mcgltf" -maxdepth 1 -type f -name 'MCglTF-NeoForge-*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' | head -n1)"
+          test -n "$api" && echo "LOCAL_MCGLTF_API=$api" >> "$GITHUB_ENV"
+          test -n "$common" && echo "LOCAL_MCGLTF_COMMON=$common" >> "$GITHUB_ENV"
+          test -n "$fabric" && echo "LOCAL_MCGLTF_FABRIC=$fabric" >> "$GITHUB_ENV"
+          test -n "$neoforge" && echo "LOCAL_MCGLTF_NEOFORGE=$neoforge" >> "$GITHUB_ENV"
+      - name: Common unit tests
+        run: |
+          args=(--no-daemon --stacktrace :common:test :api:build)
+          [[ -n "${LOCAL_MCGLTF_API:-}" ]] && args+=(-PlocalMcgltfApi="$LOCAL_MCGLTF_API")
+          [[ -n "${LOCAL_MCGLTF_COMMON:-}" ]] && args+=(-PlocalMcgltfCommon="$LOCAL_MCGLTF_COMMON")
+          ./gradlew "${args[@]}"
 
-      - name: Build
-        run: ./gradlew build --no-daemon --stacktrace -PlocalMcgltf="$LOCAL_MCGLTF"
-
-      - name: Run client game test
+  fabric-build-gametest:
+    needs: common-test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Fetch MCglTF multiloader JARs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v$(sed -n 's/^mcgltf_version=//p' gradle.properties | head -n1)"
+          mkdir -p "$HOME/.celerant/mcgltf"
+          gh release download "$tag" --repo westernbear/MCglTF-1.20.4 \
+            --pattern 'mcgltf-api-*.jar' --pattern 'mcgltf-common-*.jar' --pattern 'MCglTF-Fabric-*.jar' \
+            --dir "$HOME/.celerant/mcgltf" --clobber || true
+          if ! find "$HOME/.celerant/mcgltf" -maxdepth 1 -name 'mcgltf-common-*.jar' | grep -q .; then
+            git clone --depth 1 --branch feat/multiloader-fabric-neoforge-api \
+              https://github.com/westernbear/MCglTF-1.20.4 /tmp/mcgltf-src
+            (cd /tmp/mcgltf-src && ./gradlew :common:jar --no-daemon --max-workers=1)
+            cp /tmp/mcgltf-src/common/build/libs/mcgltf-common-*.jar "$HOME/.celerant/mcgltf/"
+          fi
+          echo "LOCAL_MCGLTF_API=$(find "$HOME/.celerant/mcgltf" -name 'mcgltf-api-*.jar' ! -name '*-sources*' | head -n1)" >> "$GITHUB_ENV"
+          echo "LOCAL_MCGLTF_COMMON=$(find "$HOME/.celerant/mcgltf" -name 'mcgltf-common-*.jar' ! -name '*-sources*' ! -name '*-javadoc*' | head -n1)" >> "$GITHUB_ENV"
+          echo "LOCAL_MCGLTF_FABRIC=$(find "$HOME/.celerant/mcgltf" -name 'MCglTF-Fabric-*.jar' ! -name '*-sources*' ! -name '*-javadoc*' | head -n1)" >> "$GITHUB_ENV"
+      - name: Build Fabric
+        run: |
+          ./gradlew :fabric:build --no-daemon --stacktrace \
+            -PlocalMcgltfApi="$LOCAL_MCGLTF_API" \
+            -PlocalMcgltfCommon="$LOCAL_MCGLTF_COMMON" \
+            -PlocalMcgltfFabric="$LOCAL_MCGLTF_FABRIC"
+      - name: Run Fabric client game test
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
-        run: xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runClientGameTest --no-daemon --stacktrace -PlocalMcgltf="$LOCAL_MCGLTF"
-
-      - name: Upload OneConfig UI evidence
+        run: |
+          xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew :fabric:runClientGameTest --no-daemon --stacktrace \
+            -PlocalMcgltfApi="$LOCAL_MCGLTF_API" \
+            -PlocalMcgltfCommon="$LOCAL_MCGLTF_COMMON" \
+            -PlocalMcgltfFabric="$LOCAL_MCGLTF_FABRIC"
+      - name: Upload Fabric artifacts
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: celerant-ui-${{ github.sha }}
-          path: build/run/clientGameTest/screenshots/celerant-oneconfig-*-os.png
+          name: celerant-fabric-${{ github.sha }}
+          path: |
+            fabric/build/libs/*.jar
+            fabric/build/runs/clientGameTest/screenshots/celerant-oneconfig-*-os.png
           if-no-files-found: warn
 
-      - name: Upload JARs
+  neoforge-build-gametest:
+    needs: common-test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Fetch MCglTF multiloader JARs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v$(sed -n 's/^mcgltf_version=//p' gradle.properties | head -n1)"
+          mkdir -p "$HOME/.celerant/mcgltf"
+          gh release download "$tag" --repo westernbear/MCglTF-1.20.4 \
+            --pattern 'mcgltf-api-*.jar' --pattern 'mcgltf-common-*.jar' --pattern 'MCglTF-NeoForge-*.jar' \
+            --dir "$HOME/.celerant/mcgltf" --clobber || true
+          if ! find "$HOME/.celerant/mcgltf" -maxdepth 1 -name 'mcgltf-common-*.jar' | grep -q .; then
+            git clone --depth 1 --branch feat/multiloader-fabric-neoforge-api \
+              https://github.com/westernbear/MCglTF-1.20.4 /tmp/mcgltf-src
+            (cd /tmp/mcgltf-src && ./gradlew :common:jar --no-daemon --max-workers=1)
+            cp /tmp/mcgltf-src/common/build/libs/mcgltf-common-*.jar "$HOME/.celerant/mcgltf/"
+          fi
+          echo "LOCAL_MCGLTF_API=$(find "$HOME/.celerant/mcgltf" -name 'mcgltf-api-*.jar' ! -name '*-sources*' | head -n1)" >> "$GITHUB_ENV"
+          echo "LOCAL_MCGLTF_COMMON=$(find "$HOME/.celerant/mcgltf" -name 'mcgltf-common-*.jar' ! -name '*-sources*' ! -name '*-javadoc*' | head -n1)" >> "$GITHUB_ENV"
+          echo "LOCAL_MCGLTF_NEOFORGE=$(find "$HOME/.celerant/mcgltf" -name 'MCglTF-NeoForge-*.jar' ! -name '*-sources*' ! -name '*-javadoc*' | head -n1)" >> "$GITHUB_ENV"
+      - name: Build NeoForge
+        run: |
+          ./gradlew :neoforge:build --no-daemon --stacktrace \
+            -PlocalMcgltfApi="$LOCAL_MCGLTF_API" \
+            -PlocalMcgltfCommon="$LOCAL_MCGLTF_COMMON" \
+            -PlocalMcgltfNeoForge="$LOCAL_MCGLTF_NEOFORGE" \
+            -PirisRuntime=true
+      - name: Run NeoForge client game test
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: |
+          xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew :neoforge:runClientGameTest --no-daemon --stacktrace \
+            -PlocalMcgltfApi="$LOCAL_MCGLTF_API" \
+            -PlocalMcgltfCommon="$LOCAL_MCGLTF_COMMON" \
+            -PlocalMcgltfNeoForge="$LOCAL_MCGLTF_NEOFORGE" \
+            -PirisRuntime=true
+      - name: Upload NeoForge artifacts
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: celerant-${{ github.sha }}
-          path: build/libs/*.jar
+          name: celerant-neoforge-${{ github.sha }}
+          path: neoforge/build/libs/*.jar
+          if-no-files-found: warn
+
+  upload-api:
+    needs: [fabric-build-gametest, neoforge-build-gametest]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Build API
+        run: ./gradlew :api:build --no-daemon
+      - uses: actions/upload-artifact@v7
+        with:
+          name: celerant-api-${{ github.sha }}
+          path: api/build/libs/*.jar
           if-no-files-found: error

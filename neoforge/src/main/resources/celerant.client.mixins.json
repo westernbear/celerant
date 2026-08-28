@@ -1,0 +1,19 @@
+{
+	"required": true,
+	"package": "io.github.westernbear.celerant.client.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"client": [
+		"AvatarRendererAccessor",
+		"AvatarRendererMixin",
+		"ItemInHandRendererMixin",
+		"LivingEntityRendererMixin",
+		"IrisFinalPassMixin",
+		"ToonShaderProjectionMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	},
+	"overwrites": {
+		"requireAnnotations": true
+	}
+}

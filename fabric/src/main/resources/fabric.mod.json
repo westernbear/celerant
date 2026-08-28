@@ -1,0 +1,33 @@
+{
+	"schemaVersion": 1,
+	"id": "${mod_id}",
+	"version": "${version}",
+	"name": "${mod_name}",
+	"description": "${description}",
+	"authors": [
+		"${mod_author}"
+	],
+	"license": "${license}",
+	"icon": "assets/celerant/icon.png",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"io.github.westernbear.celerant.client.CelerantFabricClient"
+		]
+	},
+	"mixins": [
+		{
+			"config": "celerant.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=${fabric_loader_version}",
+		"minecraft": "~${minecraft_version}",
+		"java": ">=${java_version}",
+		"fabric-api": "*",
+		"mcgltf": ">=${mcgltf_version}",
+		"iris": ">=1.11.2",
+		"oneconfig": ">=1.1.6"
+	}
+}

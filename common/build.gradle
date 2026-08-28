@@ -1,0 +1,106 @@
+plugins {
+	id 'multiloader-common'
+	id 'net.neoforged.moddev'
+}
+
+neoForge {
+	neoFormVersion = neo_form_version
+}
+
+repositories {
+	maven {
+		name = 'JitPack'
+		url = 'https://jitpack.io'
+		content { includeGroup 'com.github.westernbear' }
+	}
+}
+
+dependencies {
+	api project(':api')
+	compileOnly 'net.fabricmc:sponge-mixin:0.17.3+mixin.0.8.7'
+	compileOnly(annotationProcessor('io.github.llamalad7:mixinextras-common:0.5.3'))
+	if (providers.gradleProperty('localMcgltfApi').isPresent()) {
+		compileOnly files(providers.gradleProperty('localMcgltfApi').get())
+	} else {
+		compileOnly "com.modularmods.mcgltf:mcgltf-api:${mcgltf_version}"
+	}
+	if (providers.gradleProperty('localMcgltfCommon').isPresent()) {
+		def commonJar = files(providers.gradleProperty('localMcgltfCommon').get())
+		compileOnly commonJar
+		testCompileOnly commonJar
+		testRuntimeOnly commonJar
+	} else {
+		compileOnly "com.modularmods.mcgltf:mcgltf-common-${minecraft_version}:${mcgltf_version}"
+	}
+	testImplementation 'org.junit.jupiter:junit-jupiter:5.13.4'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.13.4'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+	dependsOn tasks.named('compileJava')
+}
+
+sourceSets {
+	test {
+		compileClasspath += sourceSets.main.compileClasspath
+		runtimeClasspath += sourceSets.main.runtimeClasspath
+	}
+}
+
+tasks.withType(Javadoc).configureEach {
+	enabled = false
+}
+
+configurations {
+	commonJava {
+		canBeResolved = false
+		canBeConsumed = true
+	}
+	commonResources {
+		canBeResolved = false
+		canBeConsumed = true
+	}
+}
+
+artifacts {
+	commonJava sourceSets.main.java.sourceDirectories.singleFile
+	commonResources sourceSets.main.resources.sourceDirectories.singleFile
+}
+
+def loaderAttribute = Attribute.of('io.github.mcgradleconventions.loader', String)
+['apiElements', 'runtimeElements', 'sourcesElements', 'javadocElements'].each { variant ->
+	configurations.named(variant) {
+		attributes {
+			attribute(loaderAttribute, 'common')
+		}
+	}
+}
+sourceSets.configureEach {
+	[it.compileClasspathConfigurationName, it.runtimeClasspathConfigurationName].each { variant ->
+		configurations.named(variant) {
+			attributes {
+				attribute(loaderAttribute, 'common')
+			}
+		}
+	}
+}
+
+def vrmSelfCheck = tasks.register('vrmSelfCheck', JavaExec) {
+	group = 'verification'
+	dependsOn tasks.named('compileJava')
+	classpath = sourceSets.main.runtimeClasspath
+	mainClass = 'io.github.westernbear.celerant.client.VrmRuntime'
+	enableAssertions = true
+}
+['localMcgltfApi', 'localMcgltfCommon'].each { property ->
+	if (providers.gradleProperty(property).isPresent()) {
+		vrmSelfCheck.configure {
+			classpath += files(providers.gradleProperty(property).get())
+		}
+	}
+}
+
+tasks.named('check') {
+	dependsOn tasks.named('vrmSelfCheck')
+}
