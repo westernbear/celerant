@@ -6,6 +6,8 @@
 - Add public `celerant-api` module (`CelerantApi`, `VrmAvatarHandle`, lifecycle listeners, `LocoParams`).
 - Introduce `ICelerantPlatformHelper` / `ServiceLoader` platform bridge for rendering, networking, config, and Iris probes.
 - CI matrix: common unit tests, Fabric client GameTest, NeoForge client smoke harness; release ships Fabric, NeoForge, and API JARs.
+- Release workflow builds Fabric / NeoForge / API as separate jobs with per-loader Actions artifacts, then attaches only the main loader JARs to the GitHub Release.
+- Fix Fabric GameTest public class filename (`CelerantFabricClientGameTest.java`) and NeoForge GameTest `modId` (`celerant_gametest`, no hyphens).
 
 ## 1.2.2
 

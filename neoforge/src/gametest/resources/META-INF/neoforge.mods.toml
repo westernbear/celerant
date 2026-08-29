@@ -3,20 +3,20 @@ loaderVersion = "[4,)"
 license = "AGPL-3.0-only"
 
 [[mods]]
-modId = "celerant-gametest"
+modId = "celerant_gametest"
 version = "1.0.0"
 displayName = "Celerant NeoForge GameTest"
 authors = "westernbear"
 description = "NeoForge client smoke harness for Celerant."
 
-[[dependencies.celerant-gametest]]
+[[dependencies.celerant_gametest]]
 modId = "celerant"
 type = "required"
 versionRange = "[0,)"
 ordering = "AFTER"
 side = "CLIENT"
 
-[[dependencies.celerant-gametest]]
+[[dependencies.celerant_gametest]]
 modId = "neoforge"
 type = "required"
 versionRange = "[26.2,)"

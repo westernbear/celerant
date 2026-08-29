@@ -86,7 +86,7 @@ neoForge {
 		"${mod_id}" {
 			sourceSet sourceSets.main
 		}
-		'celerant-gametest' {
+		'celerant_gametest' {
 			sourceSet sourceSets.gametest
 		}
 	}

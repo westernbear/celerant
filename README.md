@@ -146,4 +146,4 @@ The main branch and pull requests run `:common:test`, `:fabric:runClientGameTest
 ./scripts/release.sh 26.2-1.3.0
 ```
 
-The Release workflow for `v*` tags re-runs Fabric and NeoForge client tests, then publishes **Celerant-Fabric**, **Celerant-NeoForge**, and **celerant-api** JARs with SHA-256 checksums.
+The Release workflow for `v*` tags builds and tests each loader in parallel jobs, uploads separate Actions artifacts (`celerant-fabric-*`, `celerant-neoforge-*`, `celerant-api-*`), then publishes the main **Celerant-Fabric**, **Celerant-NeoForge**, and **celerant-api** JARs (no sources/javadoc) with SHA-256 checksums on the GitHub Release.

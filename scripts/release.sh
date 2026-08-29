@@ -33,4 +33,4 @@ fi
 git tag -a "v$version" -m "Celerant $version"
 git push --atomic origin main "v$version"
 
-echo "Release v$version pushed; GitHub Actions will publish Fabric, NeoForge, and API JARs."
+echo "Release v$version pushed; GitHub Actions will upload per-loader artifacts and publish Fabric, NeoForge, and API JARs."

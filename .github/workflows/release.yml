@@ -8,23 +8,13 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  version:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
-
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up Java 25
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "25"
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
-
+      - uses: actions/checkout@v6
       - name: Verify release version
         id: version
         shell: bash
@@ -33,22 +23,72 @@ jobs:
           grep -qxF "version=$version" gradle.properties
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Fetch MCglTF multiloader JARs
+  fabric:
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Fetch MCglTF Fabric JARs
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
+        run: bash .github/scripts/fetch-mcgltf.sh fabric
+      - name: Build Fabric
         run: |
-          bash .github/scripts/fetch-mcgltf.sh
-
-      - name: Build and run Fabric client game test
-        env:
-          LIBGL_ALWAYS_SOFTWARE: "1"
-        run: |
-          xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew clean buildAll :fabric:runClientGameTest --no-daemon --stacktrace \
+          ./gradlew :fabric:build --no-daemon --stacktrace \
             -PlocalMcgltfApi="$LOCAL_MCGLTF_API" \
             -PlocalMcgltfCommon="$LOCAL_MCGLTF_COMMON" \
             -PlocalMcgltfFabric="$LOCAL_MCGLTF_FABRIC"
+      - name: Run Fabric client game test
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: |
+          xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew :fabric:runClientGameTest --no-daemon --stacktrace \
+            -PlocalMcgltfApi="$LOCAL_MCGLTF_API" \
+            -PlocalMcgltfCommon="$LOCAL_MCGLTF_COMMON" \
+            -PlocalMcgltfFabric="$LOCAL_MCGLTF_FABRIC"
+      - name: Stage Fabric release JAR
+        shell: bash
+        run: |
+          mkdir -p release/fabric
+          find fabric/build/libs -maxdepth 1 -type f -name 'Celerant-Fabric-*.jar' \
+            ! -name '*-sources.jar' ! -name '*-javadoc.jar' ! -name '*-dev.jar' \
+            -exec cp -t release/fabric {} +
+          test -n "$(find release/fabric -maxdepth 1 -type f -name '*.jar' | head -n1)"
+      - name: Upload Fabric artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: celerant-fabric-${{ needs.version.outputs.version }}
+          path: release/fabric/*.jar
+          if-no-files-found: error
 
+  neoforge:
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Fetch MCglTF NeoForge JARs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/fetch-mcgltf.sh neoforge
+      - name: Build NeoForge
+        run: |
+          ./gradlew :neoforge:build --no-daemon --stacktrace \
+            -PlocalMcgltfApi="$LOCAL_MCGLTF_API" \
+            -PlocalMcgltfCommon="$LOCAL_MCGLTF_COMMON" \
+            -PlocalMcgltfNeoForge="$LOCAL_MCGLTF_NEOFORGE" \
+            -PirisRuntime=true
       - name: Run NeoForge client game test
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
@@ -58,31 +98,100 @@ jobs:
             -PlocalMcgltfCommon="$LOCAL_MCGLTF_COMMON" \
             -PlocalMcgltfNeoForge="$LOCAL_MCGLTF_NEOFORGE" \
             -PirisRuntime=true
-
-      - name: Create checksums
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
+      - name: Stage NeoForge release JAR
         shell: bash
         run: |
-          mkdir -p release
-          cp fabric/build/libs/Celerant-Fabric-*.jar release/
-          cp neoforge/build/libs/Celerant-NeoForge-*.jar release/
-          cp api/build/libs/celerant-api-*.jar release/
-          (cd release && sha256sum *.jar > SHA256SUMS.txt)
+          mkdir -p release/neoforge
+          find neoforge/build/libs -maxdepth 1 -type f -name 'Celerant-NeoForge-*.jar' \
+            ! -name '*-sources.jar' ! -name '*-javadoc.jar' ! -name '*-dev.jar' \
+            -exec cp -t release/neoforge {} +
+          test -n "$(find release/neoforge -maxdepth 1 -type f -name '*.jar' | head -n1)"
+      - name: Upload NeoForge artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: celerant-neoforge-${{ needs.version.outputs.version }}
+          path: release/neoforge/*.jar
+          if-no-files-found: error
 
+  api:
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Fetch MCglTF API JARs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/fetch-mcgltf.sh
+      - name: Build API
+        run: |
+          args=(--no-daemon --stacktrace :api:build)
+          [[ -n "${LOCAL_MCGLTF_API:-}" ]] && args+=(-PlocalMcgltfApi="$LOCAL_MCGLTF_API")
+          [[ -n "${LOCAL_MCGLTF_COMMON:-}" ]] && args+=(-PlocalMcgltfCommon="$LOCAL_MCGLTF_COMMON")
+          ./gradlew "${args[@]}"
+      - name: Stage API release JAR
+        shell: bash
+        run: |
+          mkdir -p release/api
+          find api/build/libs -maxdepth 1 -type f -name 'celerant-api-*.jar' \
+            ! -name '*-sources.jar' ! -name '*-javadoc.jar' ! -name '*-dev.jar' \
+            -exec cp -t release/api {} +
+          test -n "$(find release/api -maxdepth 1 -type f -name '*.jar' | head -n1)"
+      - name: Upload API artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: celerant-api-${{ needs.version.outputs.version }}
+          path: release/api/*.jar
+          if-no-files-found: error
+
+  publish:
+    needs: [version, fabric, neoforge, api]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Download Fabric artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: celerant-fabric-${{ needs.version.outputs.version }}
+          path: release/fabric
+      - name: Download NeoForge artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: celerant-neoforge-${{ needs.version.outputs.version }}
+          path: release/neoforge
+      - name: Download API artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: celerant-api-${{ needs.version.outputs.version }}
+          path: release/api
+      - name: Assemble release assets
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        shell: bash
+        run: |
+          mkdir -p release/dist
+          cp release/fabric/*.jar release/neoforge/*.jar release/api/*.jar release/dist/
+          (cd release/dist && sha256sum *.jar > SHA256SUMS.txt)
+          echo "Release assets for v$VERSION:"
+          ls -la release/dist
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.version.outputs.version }}
         shell: bash
         run: |
           args=(
             "$GITHUB_REF_NAME"
-            release/*.jar
-            release/SHA256SUMS.txt
+            release/dist/*.jar
+            release/dist/SHA256SUMS.txt
             --verify-tag
             --generate-notes
             --title "Celerant $VERSION"
           )
-          [[ "$VERSION" == *-* ]] && args+=(--prerelease)
+          [[ "$VERSION" == *-*alpha* || "$VERSION" == *-*beta* || "$VERSION" == *-*rc* ]] && args+=(--prerelease)
           gh release create "${args[@]}"

@@ -6,7 +6,7 @@ import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.common.NeoForge;
 
-@Mod("celerant-gametest")
+@Mod("celerant_gametest")
 public final class CelerantNeoForgeGameTestMod {
 
 	public CelerantNeoForgeGameTestMod(IEventBus modEventBus) {
