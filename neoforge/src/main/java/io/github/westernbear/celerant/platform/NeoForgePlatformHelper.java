@@ -192,26 +192,20 @@ public final class NeoForgePlatformHelper implements ICelerantPlatformHelper {
 	}
 
 	private static void onRegisterPayloads(RegisterPayloadHandlersEvent event) {
-		PayloadRegistrar registrar = event.registrar("1");
-		registrar.playToClient(CelerantNetworking.HelloPayload.TYPE, CelerantNetworking.HelloPayload.CODEC,
-			(payload, context) -> CelerantNetworking.onHello(payload.protocol()));
-		registrar.playToClient(CelerantNetworking.LocoPayload.TYPE, CelerantNetworking.LocoPayload.CODEC,
-			(payload, context) -> CelerantNetworking.onLoco(payload.playerId(), payload.data()));
-		registrar.playToClient(CelerantNetworking.AvatarMetaPayload.TYPE, CelerantNetworking.AvatarMetaPayload.CODEC,
-			(payload, context) -> io.github.westernbear.celerant.client.remote.RemoteAvatarManager.onMeta(payload));
-		registrar.playToClient(CelerantNetworking.AvatarChunkPayload.TYPE, CelerantNetworking.AvatarChunkPayload.CODEC,
-			(payload, context) -> io.github.westernbear.celerant.client.remote.RemoteAvatarManager.onChunk(payload));
-		registrar.playToClient(CelerantNetworking.AvatarKeyPayload.TYPE, CelerantNetworking.AvatarKeyPayload.CODEC,
-			(payload, context) -> io.github.westernbear.celerant.client.remote.RemoteAvatarManager.onKey(payload));
-		registrar.playToServer(CelerantNetworking.HelloPayload.TYPE, CelerantNetworking.HelloPayload.CODEC,
+		// Optional: the server side is a Paper plugin, so these channels may be absent.
+		PayloadRegistrar registrar = event.registrar("1").optional();
+		registrar.playBidirectional(CelerantNetworking.HelloPayload.TYPE, CelerantNetworking.HelloPayload.CODEC,
+			(payload, context) -> CelerantNetworking.onHello(payload.protocol()), (payload, context) -> { });
+		registrar.playBidirectional(CelerantNetworking.LocoPayload.TYPE, CelerantNetworking.LocoPayload.CODEC,
+			(payload, context) -> CelerantNetworking.onLoco(payload.playerId(), payload.data()), (payload, context) -> { });
+		registrar.playBidirectional(CelerantNetworking.AvatarMetaPayload.TYPE, CelerantNetworking.AvatarMetaPayload.CODEC,
+			(payload, context) -> io.github.westernbear.celerant.client.remote.RemoteAvatarManager.onMeta(payload),
 			(payload, context) -> { });
-		registrar.playToServer(CelerantNetworking.LocoPayload.TYPE, CelerantNetworking.LocoPayload.CODEC,
+		registrar.playBidirectional(CelerantNetworking.AvatarChunkPayload.TYPE, CelerantNetworking.AvatarChunkPayload.CODEC,
+			(payload, context) -> io.github.westernbear.celerant.client.remote.RemoteAvatarManager.onChunk(payload),
 			(payload, context) -> { });
-		registrar.playToServer(CelerantNetworking.AvatarMetaPayload.TYPE, CelerantNetworking.AvatarMetaPayload.CODEC,
-			(payload, context) -> { });
-		registrar.playToServer(CelerantNetworking.AvatarChunkPayload.TYPE, CelerantNetworking.AvatarChunkPayload.CODEC,
-			(payload, context) -> { });
-		registrar.playToServer(CelerantNetworking.AvatarKeyPayload.TYPE, CelerantNetworking.AvatarKeyPayload.CODEC,
+		registrar.playBidirectional(CelerantNetworking.AvatarKeyPayload.TYPE, CelerantNetworking.AvatarKeyPayload.CODEC,
+			(payload, context) -> io.github.westernbear.celerant.client.remote.RemoteAvatarManager.onKey(payload),
 			(payload, context) -> { });
 	}
 }
