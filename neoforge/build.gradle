@@ -58,7 +58,6 @@ dependencies {
 	compileOnly("org.polyfrost.oneconfig:config:${oneconfig_api_version}") { transitive = false }
 	compileOnly("org.polyfrost.oneconfig:config-impl:${oneconfig_api_version}") { transitive = false }
 	compileOnly("org.polyfrost.oneconfig:notifications:${oneconfig_api_version}") { transitive = false }
-	runtimeOnly("maven.modrinth:oneconfig:${oneconfig_version}") { transitive = false }
 }
 
 sourceSets {

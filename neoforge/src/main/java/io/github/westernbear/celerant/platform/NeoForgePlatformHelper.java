@@ -6,14 +6,17 @@ import java.util.function.Consumer;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 
+import io.github.westernbear.celerant.client.CelerantNeoForge;
 import io.github.westernbear.celerant.client.CelerantNeoForgeConfig;
 import io.github.westernbear.celerant.client.VrmClientCommands;
 import io.github.westernbear.celerant.client.mixin.AvatarRendererAccessor;
 import io.github.westernbear.celerant.client.net.CelerantNetworking;
 import io.github.westernbear.celerant.platform.services.ICelerantPlatformHelper;
 import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.entity.player.AvatarRenderer;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
+import net.minecraft.network.chat.Component;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.loading.FMLLoader;
@@ -134,12 +137,20 @@ public final class NeoForgePlatformHelper implements ICelerantPlatformHelper {
 
 	@Override
 	public void openConfig() {
-		CelerantNeoForgeConfig.INSTANCE.open();
+		if (CelerantNeoForge.hasOneConfig()) {
+			CelerantNeoForgeConfig.INSTANCE.open();
+			return;
+		}
+		Minecraft client = Minecraft.getInstance();
+		if (client.player != null) {
+			client.player.sendSystemMessage(Component.literal(
+				"[Celerant] Settings UI needs OneConfig, which has no NeoForge build. Use /celerant vrm instead."));
+		}
 	}
 
 	@Override
 	public String modelPathValue() {
-		return CelerantNeoForgeConfig.INSTANCE.modelPathValue();
+		return CelerantNeoForge.hasOneConfig() ? CelerantNeoForgeConfig.INSTANCE.modelPathValue() : "";
 	}
 
 	private static void onRegisterKeys(RegisterKeyMappingsEvent event) {

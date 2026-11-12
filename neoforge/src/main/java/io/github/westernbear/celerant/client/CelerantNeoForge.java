@@ -9,6 +9,7 @@ import io.github.westernbear.celerant.platform.Services;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.resources.Identifier;
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.minecraft.client.Minecraft;
@@ -32,7 +33,9 @@ public final class CelerantNeoForge {
 		Services.PLATFORM.registerKeyMapping(OPEN_UI_KEY);
 		Services.PLATFORM.registerKeyMapping(OPEN_RADIAL_KEY);
 		VrmRuntime.initialize();
-		CelerantNeoForgeConfig.INSTANCE.initialize();
+		if (hasOneConfig()) {
+			CelerantNeoForgeConfig.INSTANCE.initialize();
+		}
 		Services.PLATFORM.registerClientNetworking();
 		Services.PLATFORM.registerClientCommands();
 		Services.PLATFORM.registerJoin(CelerantNetworking::announce);
@@ -41,9 +44,11 @@ public final class CelerantNeoForge {
 			CelerantNetworking.onDisconnect();
 		});
 		Services.PLATFORM.registerClientTick(() -> {
-			CelerantNeoForgeConfig.INSTANCE.syncRuntimeState();
+			if (hasOneConfig()) {
+				CelerantNeoForgeConfig.INSTANCE.syncRuntimeState();
+			}
 			while (OPEN_UI_KEY.consumeClick()) {
-				CelerantNeoForgeConfig.INSTANCE.open();
+				Services.PLATFORM.openConfig();
 			}
 			while (OPEN_RADIAL_KEY.consumeClick()) {
 				RadialMenuActions.open();
@@ -72,6 +77,11 @@ public final class CelerantNeoForge {
 	private void onDisconnect(ClientPlayerNetworkEvent.LoggingOut event) {
 		disconnectPending = true;
 		NeoForgePlatformHelper.runDisconnectCallback();
+	}
+
+	// ponytail: OneConfig ships no NeoForge build; without it NeoForge runs on defaults plus /celerant vrm commands.
+	public static boolean hasOneConfig() {
+		return ModList.get().isLoaded("oneconfig");
 	}
 
 	static KeyMapping uiKey() {
