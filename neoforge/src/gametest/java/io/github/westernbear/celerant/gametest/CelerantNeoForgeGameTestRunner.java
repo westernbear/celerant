@@ -3,7 +3,7 @@ package io.github.westernbear.celerant.gametest;
 import io.github.westernbear.celerant.client.toon.ToonShader;
 import io.github.westernbear.celerant.platform.Services;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.LevelSettings;
 import net.minecraft.world.level.WorldDataConfiguration;
@@ -47,15 +47,17 @@ public final class CelerantNeoForgeGameTestRunner {
 			case WAIT_WORLD -> {
 				if (client.level != null && client.player != null) {
 					phase = Phase.RUN_SMOKE;
-				} else if (!worldRequested && client.gui.screen() instanceof TitleScreen) {
+				} else if (!worldRequested && client.gui.overlay() == null) {
 					// NeoForge has no client GameTest harness; open a fresh flat test world ourselves.
 					worldRequested = true;
+					System.out.println("[Celerant NeoForge GameTest] creating world from screen " + describe(client.gui.screen()));
 					client.createWorldOpenFlows().createFreshLevel("celerant-gametest-" + System.currentTimeMillis(),
 						new LevelSettings("Celerant GameTest", GameType.CREATIVE, LevelSettings.DifficultySettings.DEFAULT,
 							true, WorldDataConfiguration.DEFAULT),
 						WorldOptions.testWorldWithRandomSeed(), WorldPresets::createTestWorldDimensions, client.gui.screen());
 				} else if (ticks > 2400) {
-					fail(new IllegalStateException("client never entered a world"));
+					fail(new IllegalStateException("client never entered a world (worldRequested=" + worldRequested
+						+ ", screen=" + describe(client.gui.screen()) + ")"));
 				}
 			}
 			case RUN_SMOKE -> {
@@ -77,6 +79,10 @@ public final class CelerantNeoForgeGameTestRunner {
 		require(!ToonShader.isEnabled(), "toon shading must disable");
 		System.out.println("[Celerant NeoForge GameTest] smoke passed (platform="
 			+ Services.PLATFORM.getPlatformName() + ", iris=" + Services.PLATFORM.isShaderPackInUse() + ")");
+	}
+
+	private static String describe(Screen screen) {
+		return screen == null ? "none" : screen.getClass().getName();
 	}
 
 	private static void require(boolean condition, String message) {
