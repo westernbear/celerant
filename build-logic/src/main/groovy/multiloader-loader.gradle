@@ -9,6 +9,19 @@ configurations {
     commonResources {
         canBeResolved = true
     }
+    // ponytail: API classes are shaded into each loader jar; no separate mod jar for the API.
+    apiClasses {
+        canBeResolved = true
+        canBeConsumed = false
+        transitive = false
+    }
+}
+
+tasks.named('jar', Jar) {
+    dependsOn(configurations.apiClasses)
+    from({ configurations.apiClasses.collect { zipTree(it) } }) {
+        exclude 'META-INF/**', 'LICENSE*'
+    }
 }
 
 dependencies {
@@ -18,6 +31,8 @@ dependencies {
             attribute(loaderAttribute, 'common')
         }
     }
+    implementation(project(':api'))
+    apiClasses(project(':api'))
     commonJava(project(path: ':common', configuration: 'commonJava'))
     commonResources(project(path: ':common', configuration: 'commonResources'))
 }

@@ -53,6 +53,7 @@ jobs:
             -PlocalMcgltfCommon="$LOCAL_MCGLTF_COMMON" \
             -PlocalMcgltfFabric="$LOCAL_MCGLTF_FABRIC"
       - name: Run Fabric client game test
+        timeout-minutes: 20
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
         run: |
@@ -93,6 +94,7 @@ jobs:
             -PlocalMcgltfNeoForge="$LOCAL_MCGLTF_NEOFORGE" \
             -PirisRuntime=true
       - name: Run NeoForge client game test
+        timeout-minutes: 20
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
         run: |

@@ -36,11 +36,13 @@ dependencies {
 	implementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
 	if (providers.gradleProperty('localMcgltfApi').isPresent()) {
 		compileOnly files(providers.gradleProperty('localMcgltfApi').get())
+		runtimeOnly files(providers.gradleProperty('localMcgltfApi').get())
 	} else {
 		compileOnly "com.modularmods.mcgltf:mcgltf-api:${mcgltf_version}"
 	}
 	if (providers.gradleProperty('localMcgltfCommon').isPresent()) {
 		compileOnly files(providers.gradleProperty('localMcgltfCommon').get())
+		runtimeOnly files(providers.gradleProperty('localMcgltfCommon').get())
 	}
 	if (providers.gradleProperty('localMcgltfFabric').isPresent()) {
 		runtimeOnly files(providers.gradleProperty('localMcgltfFabric').get())
