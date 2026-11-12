@@ -68,6 +68,8 @@ sourceSets {
 	}
 }
 
+evaluationDependsOn(':api')
+
 neoForge {
 	version = neoforge_version
 	runs {
@@ -87,6 +89,8 @@ neoForge {
 	mods {
 		"${mod_id}" {
 			sourceSet sourceSets.main
+			// API classes are shaded into the release jar; mirror that in dev runs.
+			sourceSet project(':api').sourceSets.main
 		}
 		'celerant_gametest' {
 			sourceSet sourceSets.gametest
